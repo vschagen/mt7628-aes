@@ -9,7 +9,7 @@
 
 #include "mt7628-aes-regs.h"
 
-static void mtk_cryp_finish_req(struct mtk_cryp *cryp)
+void mtk_cryp_finish_req(struct mtk_cryp *cryp)
 {
 	struct ablkcipher_request *req = cryp->req;
 	int err = 0;
@@ -20,113 +20,6 @@ static void mtk_cryp_finish_req(struct mtk_cryp *cryp)
 	memset(cryp->ctx->key, 0, cryp->ctx->keylen);
 
 	return ;
-}
-
-/* 
- *  Second part of IRQ
- */
-
-static irqreturn_t mtk_cryp_irq_thread(int irq, void *arg)
-{
-	struct mtk_cryp *cryp = arg;
-	struct ablkcipher_request *req = cryp->req;
-	struct AES_txdesc* txdesc;
-	struct AES_rxdesc* rxdesc;
-	u32 k, m, regVal;
-	int try_count = 0;
-	unsigned long flags = 0;
-
-	do {
-		regVal = sysRegRead(AES_GLO_CFG);
-		if ((regVal & (AES_RX_DMA_EN | AES_TX_DMA_EN)) != (AES_RX_DMA_EN | AES_TX_DMA_EN))
-			return -EIO;
-		if (!(regVal & (AES_RX_DMA_BUSY | AES_TX_DMA_BUSY)))
-			break;
-		cpu_relax();
-	} while(1);
-
-	spin_lock_irqsave(&cryp->lock, flags);
-
-	k = cryp->aes_rx_front_idx;
-	m = cryp->aes_tx_front_idx;
-	try_count = 0;
-
-	do
-	{
-		rxdesc = &cryp->rx[k];
-		
-		if (!(rxdesc->rxd_info2 & RX2_DMA_DONE)) {
-			try_count++;
-			cpu_relax();
-			continue;
-		}
-		rxdesc->rxd_info2 &= ~RX2_DMA_DONE;
-		
-		if (rxdesc->rxd_info2 & RX2_DMA_LS0) {
-			// last RX, release correspond TX
-			do
-			{
-				txdesc = &cryp->tx[m];
-				if (!(txdesc->txd_info2 & TX2_DMA_DONE))
-					break;
-				
-				if (txdesc->txd_info2 & TX2_DMA_LS1)
-					break;
-				
-				m = (m+1) % NUM_AES_TX_DESC;
-			} while (1);
-			
-			cryp->aes_tx_front_idx = (m+1) % NUM_AES_TX_DESC;
-
-			if (m == cryp->aes_tx_rear_idx) {
-//				printk("Tx Desc[%d] Clean\n", cryp->aes_tx_rear_idx);
-			}
-			
-			cryp->aes_rx_front_idx = (k+1) % NUM_AES_RX_DESC;
-			
-			if (k == cryp->aes_rx_rear_idx) {
-//				printk("Rx Desc[%d] Clean\n", cryp->aes_rx_rear_idx);
-				break;
-			}
-		}
-		
-		k = (k+1) % NUM_AES_RX_DESC;
-	} while(1);
-	
-	cryp->aes_rx_rear_idx = k;
-
-	memcpy(req->info, rxdesc->IV,16); //Copy Resulting IV back..
-
-	/* Should unmap DMA */
-	//dma_unmap_single(cryp->dev, ctx->key, ctx->keylen, DMA_TO_DEVICE); ??
-        dma_unmap_sg(cryp->dev, cryp->src.sg, cryp->src.nents, DMA_TO_DEVICE);
-	dma_unmap_sg(cryp->dev, cryp->dst.sg, cryp->dst.nents, DMA_FROM_DEVICE);
-
-	sysRegWrite(AES_RX_CALC_IDX0, cpu_to_le32(k));
-	wmb();	
-
-	mtk_cryp_finish_req(cryp);
-	spin_unlock_irqrestore(&cryp->lock, flags);
-
-	/* enable interrupt */
-	sysRegWrite(AES_INT_STATUS, AES_MASK_INT_ALL);
-	sysRegWrite(AES_INT_MASK, AES_MASK_INT_ALL);
-
-	return IRQ_HANDLED;
-}
-
-/* Interrupt split into 2 parts 
- * Multi thread is hereby supported,but not avaible in the MT7628
- * However, system scheduler gets more control
- */
-
-static irqreturn_t mtk_cryp_irq(int irq, void *arg)
-{
-
-	/* disable AES interrupt */
-	sysRegWrite(AES_INT_MASK, 0);
-
-	return IRQ_WAKE_THREAD;
 }
 
 static int mtk_aes_handle_queue(struct mtk_cryp *cryp,
@@ -500,16 +393,6 @@ int mtk_cipher_alg_register(struct mtk_cryp *cryp)
 		dev_err(cryp->dev, "Could not start crypto engine\n");
 		goto err_engine2;
 	}
-
-	err = devm_request_threaded_irq(cryp->dev, cryp->irq, mtk_cryp_irq,
-					mtk_cryp_irq_thread , IRQF_ONESHOT,
-					dev_name(cryp->dev), cryp);
-
-	if (err) {
-		dev_err(cryp->dev, "Cannot grab IRQ\n");
-		return err;
-	}
-	dev_info(cryp->dev,"IRQ %d assigned to handler",cryp->irq);
 
 	return 0;
 
