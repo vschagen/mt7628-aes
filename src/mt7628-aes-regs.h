@@ -6,7 +6,7 @@
 
 #define NUM_AES_RX_DESC		128
 #define NUM_AES_TX_DESC		128
-#define NUM_AES_BYPASS		1024
+#define NUM_AES_BYPASS		200
 
 #define phys_to_bus(a)		((a) & 0x1FFFFFFF)
 
