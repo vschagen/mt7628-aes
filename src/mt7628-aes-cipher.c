@@ -18,26 +18,24 @@ void mtk_cryp_finish_req(struct mtk_cryp *cryp)
 
 	cryp->req = NULL;
 	memset(cryp->ctx->key, 0, cryp->ctx->keylen);
-
-	return ;
 }
 
 static int mtk_aes_handle_queue(struct mtk_cryp *cryp,
 				 struct ablkcipher_request *req)
 {
-	if (req) {
+	if (req)
 		return crypto_transfer_cipher_request_to_engine(cryp->engine, req);
-	}
+
 	return 0;
 }
 
-static int mtk_cryp_prepare_cipher_req (struct crypto_engine *engine,
+static int mtk_cryp_prepare_cipher_req(struct crypto_engine *engine,
 				struct ablkcipher_request *req)
 {
 	struct crypto_ablkcipher *tfm = crypto_ablkcipher_reqtfm(req);
 	struct mtk_aes_ctx *ctx = crypto_ablkcipher_ctx(tfm);
 	struct mtk_cryp *cryp = ctx->cryp;
-	int ret=0;
+	int ret = 0;
 
 	if (!cryp)
 		return -ENODEV;
@@ -60,7 +58,7 @@ static int mtk_cryp_prepare_cipher_req (struct crypto_engine *engine,
 		dev_err(cryp->dev, "Invalid Dst SG\n");
 		ret = cryp->dst.nents;
 		goto out;
-	}	
+	}
 	cryp->ctx = ctx;
 	ctx->cryp = cryp;
 
@@ -69,15 +67,16 @@ out:
 	return ret;
 }
 
-static int mtk_cryp_cipher_one_req (struct crypto_engine *engine, struct ablkcipher_request *req)
+static int mtk_cryp_cipher_one_req(struct crypto_engine *engine,
+					struct ablkcipher_request *req)
 {
 	struct crypto_ablkcipher *tfm = crypto_ablkcipher_reqtfm(req);
 	struct mtk_aes_ctx *ctx = crypto_ablkcipher_ctx(tfm);
 	struct mtk_aes_reqctx *rctx = ablkcipher_request_ctx(req);
 	struct mtk_cryp *cryp = ctx->cryp;
 	struct scatterlist *next_dst, *next_src;
-	struct AES_txdesc* txdesc;
-	struct AES_rxdesc* rxdesc;
+	struct AES_txdesc *txdesc;
+	struct AES_rxdesc *rxdesc;
 	u32 aes_txd_info4;
 	u32 aes_free_desc;
 	u32 aes_tx_scatter = 0;
@@ -85,11 +84,10 @@ static int mtk_cryp_cipher_one_req (struct crypto_engine *engine, struct ablkcip
 	u32 i = 0, j = 0;
 	unsigned int mode;
 	unsigned long flags = 0;
-	unsigned mapped_ents;
-	
-	if (!cryp) {
+	unsigned int mapped_ents;
+
+	if (!cryp)
 		return -ENODEV;
-	}
 
 	spin_lock_irqsave(&cryp->lock, flags);
 
@@ -111,13 +109,15 @@ static int mtk_cryp_cipher_one_req (struct crypto_engine *engine, struct ablkcip
 		aes_txd_info4 |= TX4_DMA_CBC | TX4_DMA_IVR;
 
 	if (cryp->aes_tx_front_idx > cryp->aes_tx_rear_idx)
-		aes_free_desc = NUM_AES_TX_DESC - (cryp->aes_tx_front_idx - cryp->aes_tx_rear_idx);
+		aes_free_desc = NUM_AES_TX_DESC -
+			  (cryp->aes_tx_front_idx - cryp->aes_tx_rear_idx);
 	else
 		aes_free_desc = cryp->aes_tx_rear_idx - cryp->aes_tx_front_idx;
 
 	/* Map TX Descriptor */
 
-	mapped_ents = dma_map_sg(cryp->dev, cryp->src.sg, cryp->src.nents, DMA_TO_DEVICE);
+	mapped_ents = dma_map_sg(cryp->dev, cryp->src.sg, cryp->src.nents,
+				DMA_TO_DEVICE);
 		if (mapped_ents > aes_free_desc) {
 			spin_unlock_irqrestore(&cryp->lock, flags);
 			return -EAGAIN;
@@ -128,17 +128,19 @@ static int mtk_cryp_cipher_one_req (struct crypto_engine *engine, struct ablkcip
 		txdesc = &cryp->tx[aes_tx_scatter];
 
 		if ((mode & CRYPTO_MODE_CBC) && (i == 0)) {
-			if (!req->info) 
-				memset((void*)txdesc->IV, 0xFF, sizeof(uint32_t)*4);
-			else 
-				memcpy((void*)txdesc->IV, req->info , sizeof(uint32_t)*4);
+			if (!req->info)
+				memset((void *)txdesc->IV, 0xFF, sizeof(uint32_t)*4);
+			else
+				memcpy((void *)txdesc->IV, req->info, sizeof(uint32_t)*4);
+
 			txdesc->txd_info4 = aes_txd_info4 | TX4_DMA_KIU;
 		} else {
 			txdesc->txd_info4 = aes_txd_info4;
 		}
-		
+
 		if (i == 0) {
-			txdesc->SDP0 = (u32)dma_map_single(cryp->dev, ctx->key, ctx->keylen, DMA_TO_DEVICE);
+			txdesc->SDP0 = (u32)dma_map_single(cryp->dev, ctx->key,
+					ctx->keylen, DMA_TO_DEVICE);
 			txdesc->txd_info2 = TX2_DMA_SDL0_SET(ctx->keylen);
 		} else {
 			txdesc->txd_info2 = 0;
@@ -149,12 +151,14 @@ static int mtk_cryp_cipher_one_req (struct crypto_engine *engine, struct ablkcip
 		txdesc->txd_info2 |= TX2_DMA_LS1;
 
 	if (cryp->aes_rx_front_idx > cryp->aes_rx_rear_idx)
-		aes_free_desc = NUM_AES_RX_DESC - (cryp->aes_rx_front_idx - cryp->aes_rx_rear_idx);
+		aes_free_desc = NUM_AES_RX_DESC - (cryp->aes_rx_front_idx -
+							cryp->aes_rx_rear_idx);
 	else
 		aes_free_desc = cryp->aes_rx_rear_idx - cryp->aes_rx_front_idx;
 
 	/* Map RX Descriptor */
-	mapped_ents = dma_map_sg(cryp->dev, cryp->dst.sg, cryp->dst.nents, DMA_FROM_DEVICE);
+	mapped_ents = dma_map_sg(cryp->dev, cryp->dst.sg, cryp->dst.nents,
+					DMA_FROM_DEVICE);
 		if (mapped_ents > aes_free_desc) {
 			spin_unlock_irqrestore(&cryp->lock, flags);
 			return -EAGAIN;
@@ -172,13 +176,13 @@ static int mtk_cryp_cipher_one_req (struct crypto_engine *engine, struct ablkcip
 	cryp->aes_rx_rear_idx = aes_rx_gather;
 
 	// Make sure all data is written before starting engine...
-	wmb();
+	//wmb();
 
 	/* Writing new scattercount starts PDMA action */
 	aes_tx_scatter = (aes_tx_scatter + 1) % NUM_AES_TX_DESC;
 	sysRegWrite(AES_TX_CTX_IDX0, cpu_to_le32(aes_tx_scatter));
 	spin_unlock_irqrestore(&cryp->lock, flags);
-	
+
 	return 0;
 }
 
@@ -209,7 +213,7 @@ static int mtk_aes_crypt(struct ablkcipher_request *req, unsigned int mode)
 	struct mtk_aes_reqctx *rctx = ablkcipher_request_ctx(req);
 	struct mtk_cryp *cryp;
 	int ret;
-	
+
 	if (req->nbytes < NUM_AES_BYPASS) {
 		SKCIPHER_REQUEST_ON_STACK(subreq, ctx->fallback);
 
@@ -228,11 +232,11 @@ static int mtk_aes_crypt(struct ablkcipher_request *req, unsigned int mode)
 		return ret;
 	}
 
-	cryp = mtk_aes_find_dev (ctx);
+	cryp = mtk_aes_find_dev(ctx);
 
-	if (!cryp) {
+	if (!cryp)
 		return -ENODEV;
-	}
+
 	rctx->mode = mode;
 
 	return mtk_aes_handle_queue(cryp, req);
@@ -246,14 +250,14 @@ static int mtk_aes_setkey(struct crypto_ablkcipher *tfm, const u8 *key,
 	struct mtk_aes_ctx *ctx = crypto_ablkcipher_ctx(tfm);
 	int ret;
 
-	if (keylen != AES_KEYSIZE_128 && 
-            keylen != AES_KEYSIZE_192 &&
-            keylen != AES_KEYSIZE_256) {
- 		crypto_ablkcipher_set_flags(tfm, CRYPTO_TFM_RES_BAD_KEY_LEN);
-                return -EINVAL;
-            }
+	if (keylen != AES_KEYSIZE_128 &&
+	    keylen != AES_KEYSIZE_192 &&
+	    keylen != AES_KEYSIZE_256) {
+		crypto_ablkcipher_set_flags(tfm, CRYPTO_TFM_RES_BAD_KEY_LEN);
+		return -EINVAL;
+		}
 
-	memcpy(ctx->key, key, keylen); 
+	memcpy(ctx->key, key, keylen);
 	ctx->keylen = keylen;
 
 	crypto_skcipher_clear_flags(ctx->fallback, CRYPTO_TFM_REQ_MASK);
@@ -293,10 +297,9 @@ static int mtk_aes_cra_init(struct crypto_tfm *tfm)
 	struct crypto_skcipher *blk;
 
 	blk = crypto_alloc_skcipher(name, 0, flags);
-			
-	if (IS_ERR(blk)) {
+
+	if (IS_ERR(blk))
 		return PTR_ERR(blk);
-	}
 
 	ctx->fallback = blk;
 
@@ -312,20 +315,20 @@ static void mtk_aes_cra_exit(struct crypto_tfm *tfm)
 	if (ctx->fallback)
 		crypto_free_skcipher(ctx->fallback);
 
-	ctx->fallback= NULL;
+	ctx->fallback = NULL;
 }
 
 
 
 /* ********************** ALGS ************************************ */
 
-static struct crypto_alg aes_algs[]= {
+static struct crypto_alg aes_algs[] = {
 {
 	.cra_name		= "cbc(aes)",
 	.cra_driver_name	= "cbc-aes-mt7628",
 	.cra_priority		= 300,
-	.cra_flags		= CRYPTO_ALG_ASYNC | CRYPTO_ALG_KERN_DRIVER_ONLY |
-				  CRYPTO_ALG_TYPE_ABLKCIPHER | CRYPTO_ALG_NEED_FALLBACK,
+	.cra_flags		= CRYPTO_ALG_ASYNC | CRYPTO_ALG_NEED_FALLBACK |
+				  CRYPTO_ALG_TYPE_ABLKCIPHER,
 	.cra_blocksize		= AES_BLOCK_SIZE,
 	.cra_ctxsize		= sizeof(struct mtk_aes_ctx),
 	.cra_alignmask		= 0xf,
@@ -379,7 +382,7 @@ int mtk_cipher_alg_register(struct mtk_cryp *cryp)
 	spin_unlock(&mtk_aes.lock);
 
 	for (i = 0; i < ARRAY_SIZE(aes_algs); i++) {
-		dev_info(cryp->dev,"Register: %s \n",aes_algs[i].cra_name);
+		dev_info(cryp->dev, "Register: %s\n", aes_algs[i].cra_name);
 		err = crypto_register_alg(&aes_algs[i]);
 		if (err)
 			goto err_aes_algs;
