@@ -76,9 +76,9 @@
 
 #define AES_DLY_INIT_VALUE	0x00008101
 
-/*=========================================
-      AES AES_RX Descriptor Format define
-=========================================*/
+/*
+ * AES AES_RX Descriptor Format define
+ */
 
 #define RX2_DMA_SDL0_GET(_x)		(((_x) >> 16) & 0x3fff)
 #define RX2_DMA_SDL0_SET(_x)		(((_x) & 0x3fff) << 16)
@@ -93,15 +93,15 @@
 
 struct AES_rxdesc {
 	unsigned int SDP0;
-	volatile unsigned int rxd_info2;/* need volatile for cycle read (prevent compiler over optimized) */
+	volatile unsigned int rxd_info2; // need volatile for cycle read
 	unsigned int user_data;
 	unsigned int rxd_info4;
 	unsigned int IV[4];
-}__attribute__((aligned(32)));
+} __attribute__((aligned(32)));
 
-/*=========================================
-      AES AES_TX Descriptor Format define
-=========================================*/
+/*
+ * AES AES_TX Descriptor Format define
+ */
 
 #define TX2_DMA_SDL1_SET(_x)		((_x) & 0x3fff)
 #define TX2_DMA_LS1			BIT(14)
@@ -121,11 +121,11 @@ struct AES_rxdesc {
 
 struct AES_txdesc {
 	unsigned int SDP0;
-	volatile unsigned int txd_info2;/* need volatile for cycle read (prevent compiler over optimized) */
+	volatile unsigned int txd_info2; // need volatile for cycle read
 	unsigned int SDP1;
 	unsigned int txd_info4;
 	unsigned int IV[4];
-}__attribute__((aligned(32)));
+} __attribute__((aligned(32)));
 
 
 struct mtk_aes_dma {
@@ -144,48 +144,48 @@ struct mtk_aes_dma {
  * @rx:		pointer to descriptor output-ring
  * @src:	Source Scatterlist to be encrypted/decrypted
  * @dst:	Destination Scatterlist for the result of the operation
- * 
+ *
  * @aes_list:	device list of AES
  *
  * Structure storing cryptographic device information.
  */
 struct mtk_cryp {
 	void __iomem			*base;
-	struct device 			*dev;
-	struct clk 			*clk;
-	int 				irq;
+	struct device			*dev;
+	struct clk			*clk;
+	int				irq;
 
 	struct AES_txdesc		*tx;
 	struct AES_rxdesc		*rx;
 
-	unsigned int 			aes_tx_front_idx;
-	unsigned int 			aes_rx_front_idx;
-	unsigned int 			aes_tx_rear_idx;
-	unsigned int 			aes_rx_rear_idx;
-	dma_addr_t 			phy_tx;
-	dma_addr_t 			phy_rx;
+	unsigned int			aes_tx_front_idx;
+	unsigned int			aes_rx_front_idx;
+	unsigned int			aes_tx_rear_idx;
+	unsigned int			aes_rx_rear_idx;
+	dma_addr_t			phy_tx;
+	dma_addr_t			phy_rx;
 
-	struct mtk_aes_dma 		src;
-	struct mtk_aes_dma 		dst;
+	struct mtk_aes_dma		src;
+	struct mtk_aes_dma		dst;
 	struct list_head		aes_list;
 
 	struct crypto_engine		*engine;
-	spinlock_t 			lock;
-	struct ablkcipher_request 	*req;
+	spinlock_t			lock;
+	struct ablkcipher_request	*req;
 	struct mtk_aes_ctx		*ctx;
 };
 
 struct mtk_aes_ctx {
 	struct mtk_cryp *cryp;
 	/* common */
-	u8 			key[AES_MAX_KEY_SIZE];
-	u32 			keylen;
-	u8 			mode;
+	u8			key[AES_MAX_KEY_SIZE];
+	u32			keylen;
+	u8			mode;
 	struct crypto_skcipher	*fallback;
 };
 
 struct mtk_aes_reqctx {
-	unsigned long 	mode;
+	unsigned long	mode;
 };
 
 struct mtk_aes_drv {
