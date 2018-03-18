@@ -102,10 +102,10 @@ static int mtk_cryp_cipher_one_req(struct crypto_engine *engine,
 	else
 		aes_txd_info4 = TX4_DMA_AES_128;
 
-	if (mode & CRYPTO_MODE_ENC)
+	if (rctx->mode & CRYPTO_MODE_ENC)
 		aes_txd_info4 |= TX4_DMA_ENC;
 
-	if (mode & CRYPTO_MODE_CBC)
+	if (rctx->mode & CRYPTO_MODE_CBC)
 		aes_txd_info4 |= TX4_DMA_CBC | TX4_DMA_IVR;
 
 	if (cryp->aes_tx_front_idx > cryp->aes_tx_rear_idx)
@@ -127,7 +127,7 @@ static int mtk_cryp_cipher_one_req(struct crypto_engine *engine,
 		aes_tx_scatter = (cryp->aes_tx_rear_idx + i + 1) % NUM_AES_TX_DESC;
 		txdesc = &cryp->tx[aes_tx_scatter];
 
-		if ((mode & CRYPTO_MODE_CBC) && (i == 0)) {
+		if ((rctx->mode & CRYPTO_MODE_CBC) && (i == 0)) {
 			if (!req->info)
 				memset((void *)txdesc->IV, 0xFF, sizeof(uint32_t)*4);
 			else
@@ -175,12 +175,9 @@ static int mtk_cryp_cipher_one_req(struct crypto_engine *engine,
 	cryp->aes_tx_rear_idx = aes_tx_scatter;
 	cryp->aes_rx_rear_idx = aes_rx_gather;
 
-	// Make sure all data is written before starting engine...
-	wmb();
-
 	/* Writing new scattercount starts PDMA action */
 	aes_tx_scatter = (aes_tx_scatter + 1) % NUM_AES_TX_DESC;
-	writel(cpu_to_le32(aes_tx_scatter), AES_TX_CTX_IDX0);
+	writel(aes_tx_scatter, AES_TX_CTX_IDX0);
 	spin_unlock_irqrestore(&cryp->lock, flags);
 
 	return 0;

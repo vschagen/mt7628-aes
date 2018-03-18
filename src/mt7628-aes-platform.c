@@ -70,29 +70,14 @@ static void aes_engine_stop(void)
 	writel(0, AES_INT_MASK);
 }
 
-/*
- *  Second part of IRQ
- */
-
-static irqreturn_t mtk_cryp_irq_thread(int irq, void *arg)
+static irqreturn_t mtk_cryp_irq(int irq, void *arg)
 {
 	struct mtk_cryp *cryp = arg;
-	struct ablkcipher_request *req = cryp->req;
 	struct AES_txdesc *txdesc;
 	struct AES_rxdesc *rxdesc;
-	u32 k, m, regVal;
+	u32 k, m;
 	int try_count = 0;
 	unsigned long flags = 0;
-
-	do {
-		regVal = readl(AES_GLO_CFG);
-		if ((regVal & (AES_RX_DMA_EN|AES_TX_DMA_EN)) != (AES_RX_DMA_EN
-							| AES_TX_DMA_EN))
-			return -EIO;
-		if (!(regVal & (AES_RX_DMA_BUSY | AES_TX_DMA_BUSY)))
-			break;
-		cpu_relax();
-	} while (1);
 
 	spin_lock_irqsave(&cryp->lock, flags);
 
@@ -139,38 +124,20 @@ static irqreturn_t mtk_cryp_irq_thread(int irq, void *arg)
 
 	cryp->aes_rx_rear_idx = k;
 
-	memcpy(req->info, rxdesc->IV, 16); //Copy Resulting IV back..
-
 	/* Should unmap DMA */
 	//dma_unmap_single(cryp->dev, ctx->key, ctx->keylen, DMA_TO_DEVICE); ??
 	dma_unmap_sg(cryp->dev, cryp->src.sg, cryp->src.nents, DMA_TO_DEVICE);
 	dma_unmap_sg(cryp->dev, cryp->dst.sg, cryp->dst.nents, DMA_FROM_DEVICE);
 
-	writel(cpu_to_le32(k), AES_RX_CALC_IDX0);
-	wmb();
+	writel(k, AES_RX_CALC_IDX0);
 
 	mtk_cryp_finish_req(cryp);
 	spin_unlock_irqrestore(&cryp->lock, flags);
 
 	/* enable interrupt */
-	writel(AES_MASK_INT_ALL, AES_INT_STATUS);
-	writel(AES_MASK_INT_ALL, AES_INT_MASK);
+	writel_relaxed(AES_MASK_INT_ALL, AES_INT_STATUS);
 
 	return IRQ_HANDLED;
-}
-
-/* Interrupt split into 2 parts
- * Multi thread is hereby supported,but not avaible in the MT7628
- * However, system scheduler gets more control
- */
-
-static irqreturn_t mtk_cryp_irq(int irq, void *arg)
-{
-
-	/* disable AES interrupt */
-	writel(0, AES_INT_MASK);
-
-	return IRQ_WAKE_THREAD;
 }
 
 /* Allocate Descriptor rings */
@@ -213,13 +180,13 @@ static int aes_engine_desc_init(struct mtk_cryp *cryp)
 	regVal = readl(AES_GLO_CFG);
 
 	writel((u32)cryp->phy_tx, AES_TX_BASE_PTR0);
-	writel(cpu_to_le32((u32)NUM_AES_TX_DESC), AES_TX_MAX_CNT0);
+	writel((u32)NUM_AES_TX_DESC, AES_TX_MAX_CNT0);
 	writel(0, AES_TX_CTX_IDX0);
 	writel(AES_PST_DTX_IDX0, AES_RST_CFG);
 
 	writel((u32)cryp->phy_rx, AES_RX_BASE_PTR0);
-	writel(cpu_to_le32((u32)NUM_AES_RX_DESC), AES_RX_MAX_CNT0);
-	writel(cpu_to_le32((u32)(NUM_AES_RX_DESC - 1)), AES_RX_CALC_IDX0);
+	writel((u32)NUM_AES_RX_DESC, AES_RX_MAX_CNT0);
+	writel((u32)(NUM_AES_RX_DESC - 1), AES_RX_CALC_IDX0);
 	regVal = readl(AES_RX_CALC_IDX0);
 	writel(AES_PST_DRX_IDX0, AES_RST_CFG);
 
@@ -284,7 +251,7 @@ static int mt7628_cryp_probe(struct platform_device *pdev)
 	}
 
 	ret = devm_request_threaded_irq(cryp->dev, cryp->irq, mtk_cryp_irq,
-					mtk_cryp_irq_thread, IRQF_ONESHOT,
+					NULL, IRQF_ONESHOT,
 					dev_name(cryp->dev), cryp);
 
 	if (ret) {
@@ -300,7 +267,7 @@ static int mt7628_cryp_probe(struct platform_device *pdev)
 			}
 
 	/* Initialize crypto engine */
-	cryp->engine = crypto_engine_alloc_init(dev, 0);
+	cryp->engine = crypto_engine_alloc_init(dev, 1);
 	if (!cryp->engine) {
 		dev_err(dev, "Could not init crypto engine\n");
 		ret = -ENOMEM;
