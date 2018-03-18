@@ -176,11 +176,11 @@ static int mtk_cryp_cipher_one_req(struct crypto_engine *engine,
 	cryp->aes_rx_rear_idx = aes_rx_gather;
 
 	// Make sure all data is written before starting engine...
-	//wmb();
+	wmb();
 
 	/* Writing new scattercount starts PDMA action */
 	aes_tx_scatter = (aes_tx_scatter + 1) % NUM_AES_TX_DESC;
-	sysRegWrite(AES_TX_CTX_IDX0, cpu_to_le32(aes_tx_scatter));
+	writel(cpu_to_le32(aes_tx_scatter), AES_TX_CTX_IDX0);
 	spin_unlock_irqrestore(&cryp->lock, flags);
 
 	return 0;

@@ -8,12 +8,6 @@
 #define NUM_AES_TX_DESC		128
 #define NUM_AES_BYPASS		200
 
-#define phys_to_bus(a)		((a) & 0x1FFFFFFF)
-
-#define PHYS_TO_K1(physaddr)	KSEG1ADDR(physaddr)
-#define sysRegRead(phys)	(*(volatile unsigned int *)PHYS_TO_K1(phys))
-#define sysRegWrite(phys, val)	((*(volatile unsigned int *)PHYS_TO_K1(phys)) = (val))
-
 #define RALINK_SYSCTL_BASE	0xB0000000
 #define REG_CLKCTRL		(RALINK_SYSCTL_BASE + 0x30)
 #define REG_RSTCTRL		(RALINK_SYSCTL_BASE + 0x34)
@@ -93,7 +87,7 @@
 
 struct AES_rxdesc {
 	unsigned int SDP0;
-	volatile unsigned int rxd_info2; // need volatile for cycle read
+	volatile unsigned int rxd_info2;
 	unsigned int user_data;
 	unsigned int rxd_info4;
 	unsigned int IV[4];
@@ -121,7 +115,7 @@ struct AES_rxdesc {
 
 struct AES_txdesc {
 	unsigned int SDP0;
-	volatile unsigned int txd_info2; // need volatile for cycle read
+	volatile unsigned int txd_info2;
 	unsigned int SDP1;
 	unsigned int txd_info4;
 	unsigned int IV[4];
