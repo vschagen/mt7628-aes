@@ -22,9 +22,17 @@ endef
 define KernelPackage/crypto-hw-mt7628-aes
   $(call Package/crypto-hw-mt7628-aes/Default)
   SECTION:=kernel
+  KCONFIG:= CRYPTO_HW=y \
+            CRYPTO_ENGINE=y
+  DEPENDS:=+@CONFIG_CRYPTO_ENGINE
   TITLE:=Kernel driver for HW AES ENGINE MT7628
-  KCONFIG:= 
   FILES:=$(PKG_BUILD_DIR)/crypto-hw-mt7628-aes.ko
+   $(call AddDepends/crypto)
+endef
+
+define KernelPacakge/crypto-hw-mt7628-aes/config
+	select CRYPTO_HW
+	select CRYPTO_ENGINE
 endef
 
 define KernelPackage/crypto-hw-mt7628-aes/description
