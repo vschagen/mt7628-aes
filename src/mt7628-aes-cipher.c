@@ -178,7 +178,7 @@ static int mtk_cryp_cipher_one_req(struct crypto_engine *engine,
 
 	/* Writing new scattercount starts PDMA action */
 	aes_tx_scatter = (aes_tx_scatter + 1) % NUM_AES_TX_DESC;
-	writel(aes_tx_scatter, AES_TX_CTX_IDX0);
+	writel(aes_tx_scatter, cryp->base + AES_TX_CTX_IDX0);
 	spin_unlock_irqrestore(&cryp->lock, flags);
 
 	return 0;
@@ -316,8 +316,6 @@ static void mtk_aes_cra_exit(struct crypto_tfm *tfm)
 	ctx->fallback = NULL;
 }
 
-
-
 /* ********************** ALGS ************************************ */
 
 static struct crypto_alg aes_algs[] = {
@@ -366,8 +364,6 @@ static struct crypto_alg aes_algs[] = {
 		}
 },
 };
-
-/* Register all available ALGS in this engine */
 
 int mtk_cipher_alg_register(struct mtk_cryp *cryp)
 {

@@ -17,27 +17,25 @@
 #define CRYPTO_MODE_ENC	BIT(0)
 #define CRYPTO_MODE_CBC	BIT(1)
 
-#define RALINK_AES_ENGINE_BASE	0xB0004000
-
 /* 1. AES */
-#define AES_TX_BASE_PTR0	((void *)RALINK_AES_ENGINE_BASE + 0x000)
-#define AES_TX_MAX_CNT0		((void *)RALINK_AES_ENGINE_BASE + 0x004)
-#define AES_TX_CTX_IDX0		((void *)RALINK_AES_ENGINE_BASE + 0x008)
-#define AES_TX_DTX_IDX0		((void *)RALINK_AES_ENGINE_BASE + 0x00C)
+#define AES_TX_BASE_PTR0	0x000
+#define AES_TX_MAX_CNT0		0x004
+#define AES_TX_CTX_IDX0		0x008
+#define AES_TX_DTX_IDX0		0x00C
 
-#define AES_RX_BASE_PTR0	((void *)RALINK_AES_ENGINE_BASE + 0x100)
-#define AES_RX_MAX_CNT0		((void *)RALINK_AES_ENGINE_BASE + 0x104)
-#define AES_RX_CALC_IDX0	((void *)RALINK_AES_ENGINE_BASE + 0x108)
-#define AES_RX_DRX_IDX0		((void *)RALINK_AES_ENGINE_BASE + 0x10C)
+#define AES_RX_BASE_PTR0	0x100
+#define AES_RX_MAX_CNT0		0x104
+#define AES_RX_CALC_IDX0	0x108
+#define AES_RX_DRX_IDX0		0x10C
 
-#define AES_INFO		((void *)RALINK_AES_ENGINE_BASE + 0x200)
-#define AES_GLO_CFG		((void *)RALINK_AES_ENGINE_BASE + 0x204)
-#define AES_RST_IDX		((void *)RALINK_AES_ENGINE_BASE + 0x208)
+#define AES_INFO		0x200
+#define AES_GLO_CFG		0x204
+#define AES_RST_IDX		0x208
 #define AES_RST_CFG		(AES_RST_IDX)
-#define AES_DLY_INT_CFG		((void *)RALINK_AES_ENGINE_BASE + 0x20C)
-#define AES_FREEQ_THRES		((void *)RALINK_AES_ENGINE_BASE + 0x210)
-#define AES_INT_STATUS		((void *)RALINK_AES_ENGINE_BASE + 0x220)
-#define AES_INT_MASK		((void *)RALINK_AES_ENGINE_BASE + 0x228)
+#define AES_DLY_INT_CFG		0x20C
+#define AES_FREEQ_THRES		0x210
+#define AES_INT_STATUS		0x220
+#define AES_INT_MASK		0x228
 
 /* ====================================== */
 #define AES_PST_DRX_IDX0	(1u<<16)
@@ -66,9 +64,9 @@
 #define AES_RX_DONE_INT0	(1u<<16)
 #define AES_TX_DONE_INT0	(1u<<0)
 
-#define AES_MASK_INT_ALL	(AES_RX_DONE_INT0) //DONE_INT0
+#define AES_MASK_INT_ALL	(AES_RX_DONE_INT0)
 
-#define AES_DLY_INIT_VALUE	0x00000000 //8101
+#define AES_DLY_INIT_VALUE	0x00008101
 
 /*
  * AES AES_RX Descriptor Format define
