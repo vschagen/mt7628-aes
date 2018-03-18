@@ -93,6 +93,8 @@ static int mtk_cryp_cipher_one_req(struct crypto_engine *engine,
 
 	next_src = cryp->src.sg;
 	next_dst = cryp->dst.sg;
+	ctx->phy_key = dma_map_single(cryp->dev, ctx->key, ctx->keylen, DMA_TO_DEVICE);
+
 	mode = rctx->mode;
 
 	if (ctx->keylen == AES_KEYSIZE_256)
@@ -139,8 +141,7 @@ static int mtk_cryp_cipher_one_req(struct crypto_engine *engine,
 		}
 
 		if (i == 0) {
-			txdesc->SDP0 = (u32)dma_map_single(cryp->dev, ctx->key,
-					ctx->keylen, DMA_TO_DEVICE);
+			txdesc->SDP0 = ctx->phy_key;
 			txdesc->txd_info2 = TX2_DMA_SDL0_SET(ctx->keylen);
 		} else {
 			txdesc->txd_info2 = 0;
@@ -406,5 +407,16 @@ err_engine2:
 	return err;
 }
 
+void mtk_cipher_alg_release(struct mtk_cryp *cryp)
+{
+	int i;
+
+	spin_lock(&mtk_aes.lock);
+	list_del(&cryp->aes_list);
+	spin_unlock(&mtk_aes.lock);
+
+	for (i = 0; i < ARRAY_SIZE(aes_algs); i++)
+		crypto_unregister_alg(&aes_algs[i]);
+}
 
 

@@ -73,6 +73,7 @@ static void aes_engine_stop(void)
 static irqreturn_t mtk_cryp_irq(int irq, void *arg)
 {
 	struct mtk_cryp *cryp = arg;
+	struct ablkcipher_request *req = cryp->req;
 	struct AES_txdesc *txdesc;
 	struct AES_rxdesc *rxdesc;
 	u32 k, m;
@@ -123,15 +124,17 @@ static irqreturn_t mtk_cryp_irq(int irq, void *arg)
 	} while (1);
 
 	cryp->aes_rx_rear_idx = k;
+	memcpy(req->info, rxdesc->IV, 16); //Copy back IV
 
 	/* Should unmap DMA */
-	//dma_unmap_single(cryp->dev, ctx->key, ctx->keylen, DMA_TO_DEVICE); ??
+	dma_unmap_single(cryp->dev, cryp->ctx->phy_key, cryp->ctx->keylen,
+				DMA_TO_DEVICE);
 	dma_unmap_sg(cryp->dev, cryp->src.sg, cryp->src.nents, DMA_TO_DEVICE);
 	dma_unmap_sg(cryp->dev, cryp->dst.sg, cryp->dst.nents, DMA_FROM_DEVICE);
 
 	writel(k, AES_RX_CALC_IDX0);
-
 	mtk_cryp_finish_req(cryp);
+
 	spin_unlock_irqrestore(&cryp->lock, flags);
 
 	/* enable interrupt */
@@ -286,7 +289,7 @@ static int mt7628_cryp_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, cryp);
 
-	dev_info(dev, "Initialized\n");
+	dev_info(dev, "Initialized.\n");
 
 	return 0;
 
@@ -303,10 +306,12 @@ static int __exit mt7628_cryp_remove(struct platform_device *pdev)
 		printk("Remove: no crypto device found");
 		return -ENODEV;
 	}
-
 	crypto_engine_exit(cryp->engine);
 	aes_engine_stop();
+	mtk_cipher_alg_release(cryp);
 	aes_engine_desc_free(cryp);
+	dev_info(cryp->dev, "Unloaded.\n");
+	platform_set_drvdata(pdev, NULL);
 
 	return 0;
 }

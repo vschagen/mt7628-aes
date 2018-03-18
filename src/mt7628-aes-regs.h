@@ -6,7 +6,7 @@
 
 #define NUM_AES_RX_DESC		128
 #define NUM_AES_TX_DESC		128
-#define NUM_AES_BYPASS		200
+#define NUM_AES_BYPASS		0
 
 #define RALINK_SYSCTL_BASE	0xB0000000
 #define REG_CLKCTRL		((void *)RALINK_SYSCTL_BASE + 0x30)
@@ -174,6 +174,7 @@ struct mtk_aes_ctx {
 	/* common */
 	u8			key[AES_MAX_KEY_SIZE];
 	u32			keylen;
+	dma_addr_t		phy_key;
 	u8			mode;
 	struct crypto_skcipher	*fallback;
 };
