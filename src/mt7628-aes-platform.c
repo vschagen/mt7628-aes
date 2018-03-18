@@ -287,7 +287,7 @@ static int mt7628_cryp_probe(struct platform_device *pdev)
 
 	ret = mtk_cipher_alg_register(cryp);
 
-	aes_engine_start(); // Start hw engine
+	aes_engine_start(cryp); // Start hw engine
 
 	platform_set_drvdata(pdev, cryp);
 
@@ -309,7 +309,7 @@ static int __exit mt7628_cryp_remove(struct platform_device *pdev)
 		return -ENODEV;
 	}
 	crypto_engine_exit(cryp->engine);
-	aes_engine_stop();
+	aes_engine_stop(cryp);
 	mtk_cipher_alg_release(cryp);
 	aes_engine_desc_free(cryp);
 	dev_info(cryp->dev, "Unloaded.\n");
