@@ -19,12 +19,12 @@ static void aes_engine_start(struct mtk_cryp *cryp)
 	u32 AES_glo_cfg = AES_TX_DMA_EN | AES_RX_DMA_EN | AES_TX_WB_DDONE
 			 | AES_DESC_5DW_INFO_EN | AES_RX_ANYBYTE_ALIGN;
 
-	writel(AES_DLY_INIT_VALUE, AES_DLY_INT_CFG);
-	writel(0xffffffff, AES_INT_STATUS);
-	writel(AES_MASK_INT_ALL, AES_INT_MASK);
+	writel(AES_DLY_INIT_VALUE, cryp->base + AES_DLY_INT_CFG);
+	writel(0xffffffff, cryp->base + AES_INT_STATUS);
+	writel(AES_MASK_INT_ALL, cryp->base + AES_INT_MASK);
 
 	AES_glo_cfg |= AES_BT_SIZE_16DWORDS;
-	writel(AES_glo_cfg, AES_GLO_CFG);
+	writel(AES_glo_cfg, cryp->base + AES_GLO_CFG);
 }
 
 static void aes_engine_reset(void)
