@@ -74,8 +74,8 @@ static irqreturn_t mtk_cryp_irq(int irq, void *arg)
 {
 	struct mtk_cryp *cryp = arg;
 	struct ablkcipher_request *req = cryp->req;
-	struct AES_txdesc *txdesc;
-	struct AES_rxdesc *rxdesc;
+	struct aes_txdesc *txdesc;
+	struct aes_rxdesc *rxdesc;
 	u32 k, m;
 	int try_count = 0;
 	unsigned long flags = 0;
@@ -150,7 +150,7 @@ static int aes_engine_desc_init(struct mtk_cryp *cryp)
 	u32 regVal;
 	size_t size;
 
-	size = (NUM_AES_TX_DESC * sizeof(struct AES_txdesc));
+	size = (NUM_AES_TX_DESC * sizeof(struct aes_txdesc));
 
 	cryp->tx = dma_zalloc_coherent(cryp->dev, size,
 					&cryp->phy_tx, GFP_KERNEL);
@@ -159,7 +159,7 @@ static int aes_engine_desc_init(struct mtk_cryp *cryp)
 
 	dev_info(cryp->dev, "TX Ring : %08X\n", cryp->phy_tx);
 
-	size = NUM_AES_RX_DESC * sizeof(struct AES_rxdesc);
+	size = NUM_AES_RX_DESC * sizeof(struct aes_rxdesc);
 
 	cryp->rx = dma_zalloc_coherent(cryp->dev, size,
 					&cryp->phy_rx, GFP_KERNEL);

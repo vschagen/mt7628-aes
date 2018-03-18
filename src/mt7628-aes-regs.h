@@ -85,7 +85,7 @@
 #define RX4_DMA_IVR			BIT(5)
 #define RX4_DMA_KIU			BIT(6)
 
-struct AES_rxdesc {
+struct aes_rxdesc {
 	unsigned int SDP0;
 	volatile unsigned int rxd_info2;
 	unsigned int user_data;
@@ -113,7 +113,7 @@ struct AES_rxdesc {
 #define TX4_DMA_AES_192			1
 #define TX4_DMA_AES_256			2
 
-struct AES_txdesc {
+struct aes_txdesc {
 	unsigned int SDP0;
 	volatile unsigned int txd_info2;
 	unsigned int SDP1;
@@ -149,8 +149,8 @@ struct mtk_cryp {
 	struct clk			*clk;
 	int				irq;
 
-	struct AES_txdesc		*tx;
-	struct AES_rxdesc		*rx;
+	struct aes_txdesc		*tx;
+	struct aes_rxdesc		*rx;
 
 	unsigned int			aes_tx_front_idx;
 	unsigned int			aes_rx_front_idx;
@@ -171,7 +171,6 @@ struct mtk_cryp {
 
 struct mtk_aes_ctx {
 	struct mtk_cryp *cryp;
-	/* common */
 	u8			key[AES_MAX_KEY_SIZE];
 	u32			keylen;
 	dma_addr_t		phy_key;

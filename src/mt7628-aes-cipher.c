@@ -75,8 +75,8 @@ static int mtk_cryp_cipher_one_req(struct crypto_engine *engine,
 	struct mtk_aes_reqctx *rctx = ablkcipher_request_ctx(req);
 	struct mtk_cryp *cryp = ctx->cryp;
 	struct scatterlist *next_dst, *next_src;
-	struct AES_txdesc *txdesc;
-	struct AES_rxdesc *rxdesc;
+	struct aes_txdesc *txdesc;
+	struct aes_rxdesc *rxdesc;
 	u32 aes_txd_info4;
 	u32 aes_free_desc;
 	u32 aes_tx_scatter = 0;
