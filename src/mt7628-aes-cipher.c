@@ -117,13 +117,17 @@ static int mtk_cryp_cipher_one_req(struct crypto_engine *engine,
 		aes_free_desc = cryp->aes_tx_rear_idx - cryp->aes_tx_front_idx;
 
 	/* Map TX Descriptor */
-
-	mapped_ents = dma_map_sg(cryp->dev, cryp->src.sg, cryp->src.nents,
+	if (cryp->src.sg != cryp->dst.sg) {
+		mapped_ents = dma_map_sg(cryp->dev, cryp->src.sg, cryp->src.nents,
 				DMA_TO_DEVICE);
-		if (mapped_ents > aes_free_desc) {
-			spin_unlock_irqrestore(&cryp->lock, flags);
-			return -EAGAIN;
-		}
+	} else {
+		mapped_ents = dma_map_sg(cryp->dev, cryp->src.sg, cryp->src.nents,
+				DMA_BIDIRECTIONAL);
+	}
+	if (mapped_ents > aes_free_desc) {
+		spin_unlock_irqrestore(&cryp->lock, flags);
+		return -EAGAIN;
+	}
 
 	for_each_sg(cryp->src.sg, next_src, mapped_ents, i) {
 		aes_tx_scatter = (cryp->aes_tx_rear_idx + i + 1) % NUM_AES_TX_DESC;
@@ -158,6 +162,11 @@ static int mtk_cryp_cipher_one_req(struct crypto_engine *engine,
 		aes_free_desc = cryp->aes_rx_rear_idx - cryp->aes_rx_front_idx;
 
 	/* Map RX Descriptor */
+	if (cryp->src.sg != cryp->dst.sg) {
+		mapped_ents = dma_map_sg(cryp->dev, cryp->dst.sg, cryp->dst.nents,
+				DMA_FROM_DEVICE);
+	}
+
 	mapped_ents = dma_map_sg(cryp->dev, cryp->dst.sg, cryp->dst.nents,
 					DMA_FROM_DEVICE);
 		if (mapped_ents > aes_free_desc) {
