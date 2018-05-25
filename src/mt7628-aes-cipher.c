@@ -167,12 +167,10 @@ static int mtk_cryp_cipher_one_req(struct crypto_engine *engine,
 				DMA_FROM_DEVICE);
 	}
 
-	mapped_ents = dma_map_sg(cryp->dev, cryp->dst.sg, cryp->dst.nents,
-					DMA_FROM_DEVICE);
-		if (mapped_ents > aes_free_desc) {
-			spin_unlock_irqrestore(&cryp->lock, flags);
-			return -EAGAIN;
-		}
+	if (mapped_ents > aes_free_desc) {
+		spin_unlock_irqrestore(&cryp->lock, flags);
+		return -EAGAIN;
+	}
 
 	for_each_sg(cryp->dst.sg, next_dst, mapped_ents, j) {
 		aes_rx_gather = (cryp->aes_rx_rear_idx + j + 1) % NUM_AES_RX_DESC;
