@@ -130,7 +130,7 @@ static irqreturn_t mtk_cryp_irq(int irq, void *arg)
 
 	dma_unmap_single(cryp->dev, cryp->ctx->phy_key, cryp->ctx->keylen,
 				DMA_TO_DEVICE);
-	if (cryp->src.sg != cryp->dst.dg) {
+	if (cryp->src.sg != cryp->dst.sg) {
 		dma_unmap_sg(cryp->dev, cryp->src.sg, cryp->src.nents, DMA_TO_DEVICE);
 		dma_unmap_sg(cryp->dev, cryp->dst.sg, cryp->dst.nents, DMA_FROM_DEVICE);
 	} else {
