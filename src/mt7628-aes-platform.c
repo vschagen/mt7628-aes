@@ -76,58 +76,26 @@ static irqreturn_t mtk_cryp_irq(int irq, void *arg)
 	struct ablkcipher_request *req = cryp->req;
 	struct aes_txdesc *txdesc;
 	struct aes_rxdesc *rxdesc;
-	u32 k, m;
+	u32 k, m, regVal;
 	int try_count = 0;
+	int ret = 0;
 	unsigned long flags = 0;
+
+	do {
+		regVal = readl(cryp->base + AES_GLO_CFG);
+		if ((regVal & (AES_RX_DMA_EN | AES_TX_DMA_EN)) != (AES_RX_DMA_EN | AES_TX_DMA_EN))
+			return -EIO;
+		if (!(regVal & (AES_RX_DMA_BUSY | AES_TX_DMA_BUSY)))
+			break;
+		cpu_relax();
+	} while (1);
+
 
 	spin_lock_irqsave(&cryp->lock, flags);
 
 	k = cryp->aes_rx_front_idx;
 	m = cryp->aes_tx_front_idx;
 	try_count = 0;
-
-	do {
-		rxdesc = &cryp->rx[k];
-
-		if (!(rxdesc->rxd_info2 & RX2_DMA_DONE)) {
-			try_count++;
-			cpu_relax();
-			continue;
-		}
-		rxdesc->rxd_info2 &= ~RX2_DMA_DONE;
-
-		if (rxdesc->rxd_info2 & RX2_DMA_LS0) {
-			/* last RX, release correspond TX */
-			do {
-				txdesc = &cryp->tx[m];
-				if (!(txdesc->txd_info2 & TX2_DMA_DONE))
-					break;
-
-				if (txdesc->txd_info2 & TX2_DMA_LS1)
-					break;
-				m = (m+1) % NUM_AES_TX_DESC;
-			} while (1);
-
-			cryp->aes_tx_front_idx = (m+1) % NUM_AES_TX_DESC;
-
-			if (m == cryp->aes_tx_rear_idx){
-				dev_dbg(cryp->dev,"Tx Desc[%d] Clean\n",
-					cryp->aes_tx_rear_idx);
-			}
-			cryp->aes_rx_front_idx = (k+1) % NUM_AES_RX_DESC;
-
-			if (k == cryp->aes_rx_rear_idx) {
-				dev_dbg(cryp->dev,"Rx Desc[%d] Clean\n",
-					cryp->aes_rx_rear_idx);
-				break;
-			}
-		}
-		k = (k+1) % NUM_AES_RX_DESC;
-	} while (1);
-
-	cryp->aes_rx_rear_idx = k;
-	memcpy(req->info, rxdesc->IV, 16); //Copy back IV
-
 	dma_unmap_single(cryp->dev, cryp->ctx->phy_key, cryp->ctx->keylen,
 				DMA_TO_DEVICE);
 	if (cryp->src.sg != cryp->dst.sg) {
@@ -137,9 +105,55 @@ static irqreturn_t mtk_cryp_irq(int irq, void *arg)
 		dma_unmap_sg(cryp->dev, cryp->src.sg, cryp->src.nents, DMA_BIDIRECTIONAL);
 	}
 
+	do {
+		rxdesc = &cryp->rx[k];
+
+		if (!(rxdesc->rxd_info2 & RX2_DMA_DONE)) {
+			try_count++;
+			dev_info(cryp->dev, "Try count: %d", try_count);
+			cpu_relax();
+			continue;
+		}
+		rxdesc->rxd_info2 &= ~RX2_DMA_DONE;
+
+		if (rxdesc->rxd_info2 & RX2_DMA_LS0) {
+			/* last RX, release correspond TX */
+			do {
+				txdesc = &cryp->tx[m];
+				/*
+				if (!(txdesc->txd_info2 & TX2_DMA_DONE))
+					break;
+				*/
+				if (txdesc->txd_info2 & TX2_DMA_LS1)
+					break;
+				m = (m+1) % NUM_AES_TX_DESC;
+			} while (1);
+
+			cryp->aes_tx_front_idx = (m+1) % NUM_AES_TX_DESC;
+
+			if (m == cryp->aes_tx_rear_idx) {
+				dev_dbg(cryp->dev, "Tx Desc[%d] Clean\n",
+					cryp->aes_tx_rear_idx);
+			}
+			cryp->aes_rx_front_idx = (k+1) % NUM_AES_RX_DESC;
+
+			if (k == cryp->aes_rx_rear_idx) {
+				dev_dbg(cryp->dev, "Rx Desc[%d] Clean\n",
+					cryp->aes_rx_rear_idx);
+				break;
+			}
+		}
+		k = (k+1) % NUM_AES_RX_DESC;
+	} while (1);
+
+	cryp->aes_rx_rear_idx = k;
+	memcpy(req->info, rxdesc->IV, 16); //Copy back IV
+	/* Not clear if writel includes wmb on MIPS */
+	wmb();
+
 	writel(k, cryp->base + AES_RX_CALC_IDX0);
 
-	mtk_cryp_finish_req(cryp);
+	mtk_cryp_finish_req(cryp, ret);
 
 	spin_unlock_irqrestore(&cryp->lock, flags);
 
@@ -174,6 +188,12 @@ static int aes_engine_desc_init(struct mtk_cryp *cryp)
 
 	dev_info(cryp->dev, "RX Ring : %08X\n", cryp->phy_rx);
 
+	cryp->buf_in = (void *)__get_free_pages(GFP_ATOMIC, 4);
+	cryp->buf_out = (void *)__get_free_pages(GFP_ATOMIC, 4);
+	if (!cryp->buf_in || !cryp->buf_out) {
+		dev_err(cryp->dev, "Can't allocate pages when unaligned\n");
+		goto err_cleanup;
+	}
 	for (i = 0; i < NUM_AES_TX_DESC; i++)
 		cryp->tx[i].txd_info2 |= TX2_DMA_DONE;
 
@@ -200,7 +220,6 @@ static int aes_engine_desc_init(struct mtk_cryp *cryp)
 	writel(AES_PST_DRX_IDX0, cryp->base + AES_RST_CFG);
 
 	return 0;
-
 err_cleanup:
 	return -ENOMEM;
 }
@@ -228,6 +247,9 @@ static void aes_engine_desc_free(struct mtk_cryp *cryp)
 		cryp->rx = NULL;
 		cryp->phy_rx = 0;
 	}
+
+	free_pages((unsigned long)cryp->buf_in, 4);
+	free_pages((unsigned long)cryp->buf_out, 4);
 }
 
 /* Probe using Device Tree; needs helper to force loading on earlier DTS firmware */
@@ -269,12 +291,14 @@ static int mt7628_cryp_probe(struct platform_device *pdev)
 	}
 	dev_info(cryp->dev, "IRQ %d assigned to handler", cryp->irq);
 
+	/* Hardcoded Clk at the moment
 	cryp->clk = devm_clk_get(dev, "crypto");
 			if (IS_ERR(cryp->clk)) {
 				cryp->clk = NULL;
 				dev_err(dev, "Could not find clock\n");
 			}
-
+	*/
+	cryp->clk = NULL;
 	/* Initialize crypto engine */
 	cryp->engine = crypto_engine_alloc_init(dev, 1);
 	if (!cryp->engine) {

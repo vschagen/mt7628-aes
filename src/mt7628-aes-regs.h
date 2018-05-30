@@ -2,11 +2,12 @@
 #define __MTK_AES_ENGINE__
 
 #include <crypto/aes.h>
+#include <crypto/scatterwalk.h>
 #include <crypto/internal/skcipher.h>
 
 #define NUM_AES_RX_DESC		128
 #define NUM_AES_TX_DESC		128
-#define NUM_AES_BYPASS		0
+#define NUM_AES_BYPASS		200
 
 #define RALINK_SYSCTL_BASE	0xB0000000
 #define REG_CLKCTRL		((void *)RALINK_SYSCTL_BASE + 0x30)
@@ -66,7 +67,7 @@
 
 #define AES_MASK_INT_ALL	(AES_RX_DONE_INT0)
 
-#define AES_DLY_INIT_VALUE	0x00008101
+#define AES_DLY_INIT_VALUE	0x00000000
 
 /*
  * AES AES_RX Descriptor Format define
@@ -159,12 +160,22 @@ struct mtk_cryp {
 
 	struct mtk_aes_dma		src;
 	struct mtk_aes_dma		dst;
+	struct mtk_aes_dma		orig_out;
 	struct list_head		aes_list;
 
 	struct crypto_engine		*engine;
 	spinlock_t			lock;
 	struct ablkcipher_request	*req;
 	struct mtk_aes_ctx		*ctx;
+
+	/* Buffers for copying for unaligned cases */
+	struct scatterlist		in_sgl;
+	struct scatterlist		out_sgl;
+	void				*buf_in;
+	void				*buf_out;
+	bool                    	sgs_copied;
+	struct scatter_walk		in_walk;
+	struct scatter_walk		out_walk;
 };
 
 struct mtk_aes_ctx {

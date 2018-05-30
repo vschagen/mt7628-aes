@@ -2,17 +2,55 @@
 #include <linux/interrupt.h>
 #include <linux/scatterlist.h>
 #include <linux/types.h>
-
-#include <crypto/aes.h>
 #include <crypto/engine.h>
-#include <crypto/internal/skcipher.h>
 
 #include "mt7628-aes-regs.h"
 
-void mtk_cryp_finish_req(struct mtk_cryp *cryp)
+static void sg_copy_buf(void *buf, struct scatterlist *sg,
+			unsigned int start, unsigned int nbytes, int out)
+{
+	struct scatter_walk walk;
+
+	if (!nbytes)
+		return;
+
+	scatterwalk_start(&walk, sg);
+	scatterwalk_advance(&walk, start);
+	scatterwalk_copychunks(buf, &walk, nbytes, out);
+	scatterwalk_done(&walk, out, 0);
+}
+
+static int mtk_cryp_copy_sgs(struct mtk_cryp *cryp)
+{
+	int total_in, total_out;
+
+	total_in = ALIGN(cryp->src.len, AES_BLOCK_SIZE);
+	total_out = ALIGN(cryp->dst.len, AES_BLOCK_SIZE);
+
+	sg_copy_buf(cryp->buf_in, cryp->src.sg, 0, cryp->src.len, 0);
+
+	sg_init_one(&cryp->in_sgl, cryp->buf_in, total_in);
+	cryp->src.sg = &cryp->in_sgl;
+	cryp->src.nents = 1;
+
+	sg_init_one(&cryp->out_sgl, cryp->buf_out, total_out);
+	cryp->orig_out = cryp->dst;
+	cryp->dst.sg = &cryp->out_sgl;
+	cryp->dst.nents = 1;
+
+	cryp->sgs_copied = 1;
+
+	return 0;
+}
+
+void mtk_cryp_finish_req(struct mtk_cryp *cryp, int err)
 {
 	struct ablkcipher_request *req = cryp->req;
-	int err = 0;
+
+	if (cryp->sgs_copied) {
+		sg_copy_buf(cryp->buf_out, cryp->orig_out.sg, 0,
+			    cryp->orig_out.len, 1);
+	}
 
 	crypto_finalize_cipher_request(cryp->engine, req, err);
 
@@ -60,9 +98,12 @@ static int mtk_cryp_prepare_cipher_req(struct crypto_engine *engine,
 		goto out;
 	}
 	cryp->ctx = ctx;
+	cryp->sgs_copied = 0;
 	ctx->cryp = cryp;
 
-	return 0;
+	if (cryp->src.len < 8192)
+		ret = mtk_cryp_copy_sgs(cryp);
+
 out:
 	return ret;
 }
@@ -182,6 +223,8 @@ static int mtk_cryp_cipher_one_req(struct crypto_engine *engine,
 
 	cryp->aes_tx_rear_idx = aes_tx_scatter;
 	cryp->aes_rx_rear_idx = aes_rx_gather;
+
+	wmb();
 
 	/* Writing new scattercount starts PDMA action */
 	aes_tx_scatter = (aes_tx_scatter + 1) % NUM_AES_TX_DESC;
