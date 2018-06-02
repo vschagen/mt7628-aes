@@ -13,6 +13,8 @@ PKG_RELEASE:=1
 
 include $(INCLUDE_DIR)/package.mk
 
+crypto-hw-mt7628-aes-autoload:= crypto-hw-mt7628-aes
+
 define Package/crypto-hw-mt7628-aes/Default
   SECTION:=kernel
   CATEGORY:=Kernel modules
@@ -24,10 +26,11 @@ define KernelPackage/crypto-hw-mt7628-aes
   SECTION:=kernel
   KCONFIG:= CRYPTO_HW=y \
             CRYPTO_ENGINE=y
-  DEPENDS:=+@CONFIG_CRYPTO_ENGINE
+  DEPENDS:=+@CONFIG_CRYPTO_ENGINE \
+	   $(call AddDepends/crypto)
+  AUTOLOAD:$(call AutoLoad,50,$(crypto-hw-mt7628-aes-autoload))
   TITLE:=Kernel driver for HW AES ENGINE MT7628
   FILES:=$(PKG_BUILD_DIR)/crypto-hw-mt7628-aes.ko
-   $(call AddDepends/crypto)
 endef
 
 define KernelPacakge/crypto-hw-mt7628-aes/config
