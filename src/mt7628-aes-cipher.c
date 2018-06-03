@@ -20,12 +20,11 @@ static void sg_copy_buf(void *buf, struct scatterlist *sg,
 	scatterwalk_done(&walk, out, 0);
 }
 
-static int mtk_cryp_copy_sgs(struct mtk_cryp *cryp)
+static int mtk_cryp_copy_sg_src(struct mtk_cryp *cryp)
 {
-	int total_in, total_out;
+	int total_in;
 
 	total_in = ALIGN(cryp->src.len, AES_BLOCK_SIZE);
-	total_out = ALIGN(cryp->dst.len, AES_BLOCK_SIZE);
 
 	sg_copy_buf(cryp->buf_in, cryp->src.sg, 0, cryp->src.len, 0);
 
@@ -33,12 +32,46 @@ static int mtk_cryp_copy_sgs(struct mtk_cryp *cryp)
 	cryp->src.sg = &cryp->in_sgl;
 	cryp->src.nents = 1;
 
+	return 0;
+}
+
+static int mtk_cryp_copy_sg_dst(struct mtk_cryp *cryp)
+{
+	int total_out;
+	total_out = ALIGN(cryp->dst.len, AES_BLOCK_SIZE);
+
 	sg_init_one(&cryp->out_sgl, cryp->buf_out, total_out);
 	cryp->orig_out = cryp->dst;
 	cryp->dst.sg = &cryp->out_sgl;
 	cryp->dst.nents = 1;
 
-	cryp->sgs_copied = 1;
+	return 0;
+}
+
+static int mtk_cryp_check_aligned(struct scatterlist *sg, size_t total,
+				    size_t align)
+{
+	int len = 0;
+
+	if (!total)
+		return 0;
+
+	if (!IS_ALIGNED(total, align))
+		return -EINVAL;
+
+	while (sg) {
+		if (!IS_ALIGNED(sg->offset, 16))
+			return -EINVAL;
+
+		if (!IS_ALIGNED(sg->length, align))
+			return -EINVAL;
+
+		len += sg->length;
+		sg = sg_next(sg);
+	}
+
+	if (len != total)
+		return -EINVAL;
 
 	return 0;
 }
@@ -73,7 +106,7 @@ static int mtk_cryp_prepare_cipher_req(struct crypto_engine *engine,
 	struct crypto_ablkcipher *tfm = crypto_ablkcipher_reqtfm(req);
 	struct mtk_aes_ctx *ctx = crypto_ablkcipher_ctx(tfm);
 	struct mtk_cryp *cryp = ctx->cryp;
-	int ret = 0;
+	int ret = 0, srca = 0, dsta = 0;
 
 	if (!cryp)
 		return -ENODEV;
@@ -101,9 +134,14 @@ static int mtk_cryp_prepare_cipher_req(struct crypto_engine *engine,
 	cryp->sgs_copied = 0;
 	ctx->cryp = cryp;
 
-	if (cryp->src.len < 8192)
-		ret = mtk_cryp_copy_sgs(cryp);
+	srca = mtk_cryp_check_aligned(cryp->src.sg, cryp->src.len, AES_BLOCK_SIZE);
+	dsta = mtk_cryp_check_aligned(cryp->dst.sg, cryp->dst.len, AES_BLOCK_SIZE);
 
+	if (srca || dsta) {
+		ret = mtk_cryp_copy_sg_src(cryp);
+		ret = mtk_cryp_copy_sg_dst(cryp);
+		cryp->sgs_copied = 1;
+	}
 out:
 	return ret;
 }

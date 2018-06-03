@@ -28,7 +28,7 @@ define KernelPackage/crypto-hw-mt7628-aes
             CRYPTO_ENGINE=y
   DEPENDS:=+@CONFIG_CRYPTO_ENGINE \
 	   $(call AddDepends/crypto)
-  AUTOLOAD:$(call AutoLoad,50,$(crypto-hw-mt7628-aes-autoload))
+  AUTOLOAD:$(call AutoLoad,45,$(crypto-hw-mt7628-aes-autoload))
   TITLE:=Kernel driver for HW AES ENGINE MT7628
   FILES:=$(PKG_BUILD_DIR)/crypto-hw-mt7628-aes.ko
 endef

@@ -47,6 +47,7 @@
 #define AES_DESC_5DW_INFO_EN	(1u<<11)
 #define AES_MUTI_ISSUE		(1u<<10)
 #define AES_TWO_BUFFER		(1u<<9)
+#define AES_32_BYTES		(1u<<8)
 #define AES_TX_WB_DDONE		(1u<<6)
 #define AES_RX_DMA_BUSY		(1u<<3)
 #define AES_TX_DMA_BUSY		(1u<<1)

@@ -1,4 +1,4 @@
-EXTRA_CFLAGS += -O2
+EXTRA_CFLAGS += -O3
 
 crypto-hw-mt7628-aes-objs:= mt7628-aes-platform.o mt7628-aes-cipher.o
 

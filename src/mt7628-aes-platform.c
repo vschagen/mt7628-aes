@@ -17,7 +17,8 @@
 static void aes_engine_start(struct mtk_cryp *cryp)
 {
 	u32 AES_glo_cfg = AES_TX_DMA_EN | AES_RX_DMA_EN | AES_TX_WB_DDONE
-			 | AES_DESC_5DW_INFO_EN | AES_RX_ANYBYTE_ALIGN;
+			| AES_DESC_5DW_INFO_EN | AES_RX_ANYBYTE_ALIGN
+			| AES_32_BYTES;
 
 	writel(AES_DLY_INIT_VALUE, cryp->base + AES_DLY_INT_CFG);
 	writel(0xffffffff, cryp->base + AES_INT_STATUS);
@@ -90,7 +91,6 @@ static irqreturn_t mtk_cryp_irq(int irq, void *arg)
 		cpu_relax();
 	} while (1);
 
-
 	spin_lock_irqsave(&cryp->lock, flags);
 
 	k = cryp->aes_rx_front_idx;
@@ -147,18 +147,15 @@ static irqreturn_t mtk_cryp_irq(int irq, void *arg)
 	} while (1);
 
 	cryp->aes_rx_rear_idx = k;
-	memcpy(req->info, rxdesc->IV, 16); //Copy back IV
-	/* Not clear if writel includes wmb on MIPS */
-	wmb();
-
 	writel(k, cryp->base + AES_RX_CALC_IDX0);
+	memcpy(req->info, rxdesc->IV, 16); //Copy back IV
 
 	mtk_cryp_finish_req(cryp, ret);
 
 	spin_unlock_irqrestore(&cryp->lock, flags);
 
 	/* enable interrupt */
-	writel_relaxed(AES_MASK_INT_ALL, cryp->base + AES_INT_STATUS);
+	writel(AES_MASK_INT_ALL, cryp->base + AES_INT_STATUS);
 
 	return IRQ_HANDLED;
 }
