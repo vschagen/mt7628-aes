@@ -16,15 +16,18 @@
 
 static void aes_engine_start(struct mtk_cryp *cryp)
 {
+	u32 regVal;
+
 	u32 AES_glo_cfg = AES_TX_DMA_EN | AES_RX_DMA_EN | AES_TX_WB_DDONE
 			| AES_DESC_5DW_INFO_EN | AES_RX_ANYBYTE_ALIGN
-			| AES_32_BYTES;
+			| AES_32_BYTES | AES_RX_2B_OFFSET;
 
 	writel(AES_DLY_INIT_VALUE, cryp->base + AES_DLY_INT_CFG);
-	writel(0xffffffff, cryp->base + AES_INT_STATUS);
+	writel(AES_MASK_INT_ALL, cryp->base + AES_INT_STATUS);
+	regVal = readl(cryp->base + AES_INT_STATUS);
 	writel(AES_MASK_INT_ALL, cryp->base + AES_INT_MASK);
 
-	AES_glo_cfg |= AES_BT_SIZE_16DWORDS;
+	AES_glo_cfg |= AES_BT_SIZE_32DWORDS;
 	writel(AES_glo_cfg, cryp->base + AES_GLO_CFG);
 }
 
@@ -34,18 +37,18 @@ static void aes_engine_reset(void)
 
 	val = readl(REG_CLKCTRL);
 	val |= RALINK_CRYPTO_CLK_EN;
-	writel(val, REG_CLKCTRL);
+	iowrite32(val, REG_CLKCTRL);
 
 	udelay(10);
 
 	val = readl(REG_RSTCTRL);
 	val |= RALINK_CRYPTO_RST;
-	writel(val, REG_RSTCTRL);
+	iowrite32(val, REG_RSTCTRL);
 
 	udelay(10);
 
 	val &= ~(RALINK_CRYPTO_RST);
-	writel(val, REG_RSTCTRL);
+	iowrite32(val, REG_RSTCTRL);
 
 	udelay(100);
 }
@@ -53,28 +56,29 @@ static void aes_engine_reset(void)
 static void aes_engine_stop(struct mtk_cryp *cryp)
 {
 	int i;
-	u32 regValue;
+	u32 regVal;
 
-	regValue = readl(cryp->base + AES_GLO_CFG);
-	regValue &= ~(AES_TX_WB_DDONE | AES_RX_DMA_EN | AES_TX_DMA_EN);
-	writel(regValue, cryp->base + AES_GLO_CFG);
+	regVal = readl(cryp->base + AES_GLO_CFG);
+	regVal &= ~(AES_TX_WB_DDONE | AES_RX_DMA_EN | AES_TX_DMA_EN);
+	iowrite32(regVal, cryp->base + AES_GLO_CFG);
 
 	/* wait AES stopped */
 	for (i = 0; i < 50; i++) {
 		msleep(1);
-		regValue = readl(cryp->base + AES_GLO_CFG);
-		if (!(regValue & (AES_RX_DMA_BUSY | AES_TX_DMA_BUSY)))
+		regVal = readl(cryp->base + AES_GLO_CFG);
+		if (!(regVal & (AES_RX_DMA_BUSY | AES_TX_DMA_BUSY)))
 			break;
 	}
 
 	/* disable AES interrupt */
-	writel(0, cryp->base + AES_INT_MASK);
+	iowrite32(0, cryp->base + AES_INT_MASK);
 }
 
 static irqreturn_t mtk_cryp_irq(int irq, void *arg)
 {
 	struct mtk_cryp *cryp = arg;
-	struct ablkcipher_request *req = cryp->req;
+	//struct ablkcipher_request *req = cryp->req;
+	//struct mtk_aes_reqctx *rctx = ablkcipher_request_ctx(req);
 	struct aes_txdesc *txdesc;
 	struct aes_rxdesc *rxdesc;
 	u32 k, m, regVal;
@@ -82,28 +86,28 @@ static irqreturn_t mtk_cryp_irq(int irq, void *arg)
 	int ret = 0;
 	unsigned long flags = 0;
 
+	spin_lock_irqsave(&cryp->lock, flags);
+	/* disable AES interrupt */
+	writel(0, cryp->base + AES_INT_MASK);
+
 	do {
 		regVal = readl(cryp->base + AES_GLO_CFG);
-		if ((regVal & (AES_RX_DMA_EN | AES_TX_DMA_EN)) != (AES_RX_DMA_EN | AES_TX_DMA_EN))
+		if ((regVal & (AES_RX_DMA_EN | AES_TX_DMA_EN)) 
+			!= (AES_RX_DMA_EN | AES_TX_DMA_EN)) {
+			dev_err(cryp->dev, "No active DMA on interrupt!");
+			spin_unlock_irqrestore(&cryp->lock, flags);
 			return -EIO;
+		}
 		if (!(regVal & (AES_RX_DMA_BUSY | AES_TX_DMA_BUSY)))
 			break;
+		try_count++;
+		dev_info(cryp->dev, "DMA busy: %d", try_count);
 		cpu_relax();
 	} while (1);
-
-	spin_lock_irqsave(&cryp->lock, flags);
 
 	k = cryp->aes_rx_front_idx;
 	m = cryp->aes_tx_front_idx;
 	try_count = 0;
-	dma_unmap_single(cryp->dev, cryp->ctx->phy_key, cryp->ctx->keylen,
-				DMA_TO_DEVICE);
-	if (cryp->src.sg != cryp->dst.sg) {
-		dma_unmap_sg(cryp->dev, cryp->src.sg, cryp->src.nents, DMA_TO_DEVICE);
-		dma_unmap_sg(cryp->dev, cryp->dst.sg, cryp->dst.nents, DMA_FROM_DEVICE);
-	} else {
-		dma_unmap_sg(cryp->dev, cryp->src.sg, cryp->src.nents, DMA_BIDIRECTIONAL);
-	}
 
 	do {
 		rxdesc = &cryp->rx[k];
@@ -126,16 +130,14 @@ static irqreturn_t mtk_cryp_irq(int irq, void *arg)
 				*/
 				if (txdesc->txd_info2 & TX2_DMA_LS1)
 					break;
-				m = (m+1) % NUM_AES_TX_DESC;
+				m = (m + 1) % NUM_AES_TX_DESC;
 			} while (1);
-
-			cryp->aes_tx_front_idx = (m+1) % NUM_AES_TX_DESC;
 
 			if (m == cryp->aes_tx_rear_idx) {
 				dev_dbg(cryp->dev, "Tx Desc[%d] Clean\n",
 					cryp->aes_tx_rear_idx);
 			}
-			cryp->aes_rx_front_idx = (k+1) % NUM_AES_RX_DESC;
+			cryp->aes_rx_front_idx = (k + 1) % NUM_AES_RX_DESC;
 
 			if (k == cryp->aes_rx_rear_idx) {
 				dev_dbg(cryp->dev, "Rx Desc[%d] Clean\n",
@@ -147,15 +149,19 @@ static irqreturn_t mtk_cryp_irq(int irq, void *arg)
 	} while (1);
 
 	cryp->aes_rx_rear_idx = k;
-	writel(k, cryp->base + AES_RX_CALC_IDX0);
-	memcpy(req->info, rxdesc->IV, 16); //Copy back IV
+	cryp->aes_tx_front_idx = (m + 1) % NUM_AES_TX_DESC;
+
+	iowrite32(k, cryp->base + AES_RX_CALC_IDX0);
 
 	mtk_cryp_finish_req(cryp, ret);
 
-	spin_unlock_irqrestore(&cryp->lock, flags);
-
 	/* enable interrupt */
-	writel(AES_MASK_INT_ALL, cryp->base + AES_INT_STATUS);
+	iowrite32(AES_MASK_INT_ALL, cryp->base + AES_INT_MASK);
+	iowrite32(AES_MASK_INT_ALL, cryp->base + AES_INT_STATUS);
+	/* flush write */
+	regVal=ioread32(cryp->base + AES_INT_STATUS);
+
+	spin_unlock_irqrestore(&cryp->lock, flags);
 
 	return IRQ_HANDLED;
 }
@@ -202,19 +208,19 @@ static int aes_engine_desc_init(struct mtk_cryp *cryp)
 
 	regVal = readl(cryp->base + AES_GLO_CFG);
 	regVal &= 0x00000ff0;
-	writel(regVal, cryp->base + AES_GLO_CFG);
+	iowrite32(regVal, cryp->base + AES_GLO_CFG);
 	regVal = readl(cryp->base + AES_GLO_CFG);
 
-	writel((u32)cryp->phy_tx, cryp->base + AES_TX_BASE_PTR0);
-	writel((u32)NUM_AES_TX_DESC, cryp->base + AES_TX_MAX_CNT0);
-	writel(0, cryp->base + AES_TX_CTX_IDX0);
-	writel(AES_PST_DTX_IDX0, cryp->base + AES_RST_CFG);
+	iowrite32((u32)cryp->phy_tx, cryp->base + AES_TX_BASE_PTR0);
+	iowrite32((u32)NUM_AES_TX_DESC, cryp->base + AES_TX_MAX_CNT0);
+	iowrite32(0, cryp->base + AES_TX_CTX_IDX0);
+	iowrite32(AES_PST_DTX_IDX0, cryp->base + AES_RST_CFG);
 
-	writel((u32)cryp->phy_rx, cryp->base + AES_RX_BASE_PTR0);
-	writel((u32)NUM_AES_RX_DESC, cryp->base + AES_RX_MAX_CNT0);
-	writel((u32)(NUM_AES_RX_DESC - 1), cryp->base + AES_RX_CALC_IDX0);
+	iowrite32((u32)cryp->phy_rx, cryp->base + AES_RX_BASE_PTR0);
+	iowrite32((u32)NUM_AES_RX_DESC, cryp->base + AES_RX_MAX_CNT0);
+	iowrite32((u32)(NUM_AES_RX_DESC - 1), cryp->base + AES_RX_CALC_IDX0);
 	regVal = readl(cryp->base + AES_RX_CALC_IDX0);
-	writel(AES_PST_DRX_IDX0, cryp->base + AES_RST_CFG);
+	iowrite32(AES_PST_DRX_IDX0, cryp->base + AES_RST_CFG);
 
 	return 0;
 err_cleanup:
@@ -226,8 +232,8 @@ static void aes_engine_desc_free(struct mtk_cryp *cryp)
 {
 	size_t	size;
 
-	writel(0, cryp->base + AES_TX_BASE_PTR0);
-	writel(0, cryp->base + AES_RX_BASE_PTR0);
+	iowrite32(0, cryp->base + AES_TX_BASE_PTR0);
+	iowrite32(0, cryp->base + AES_RX_BASE_PTR0);
 
 	size = NUM_AES_TX_DESC * sizeof(struct aes_txdesc);
 
@@ -297,7 +303,7 @@ static int mt7628_cryp_probe(struct platform_device *pdev)
 	*/
 	cryp->clk = NULL;
 	/* Initialize crypto engine */
-	cryp->engine = crypto_engine_alloc_init(dev, 1);
+	cryp->engine = crypto_engine_alloc_init(dev, 0);
 	if (!cryp->engine) {
 		dev_err(dev, "Could not init crypto engine\n");
 		ret = -ENOMEM;

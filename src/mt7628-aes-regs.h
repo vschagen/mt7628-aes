@@ -7,7 +7,7 @@
 
 #define NUM_AES_RX_DESC		128
 #define NUM_AES_TX_DESC		128
-#define NUM_AES_BYPASS		0
+#define NUM_AES_BYPASS		1
 
 #define RALINK_SYSCTL_BASE	0xB0000000
 #define REG_CLKCTRL		((void *)RALINK_SYSCTL_BASE + 0x30)
@@ -66,9 +66,9 @@
 #define AES_RX_DONE_INT0	(1u<<16)
 #define AES_TX_DONE_INT0	(1u<<0)
 
-#define AES_MASK_INT_ALL	(AES_RX_DONE_INT0)
+#define AES_MASK_INT_ALL	(AES_RX_DLY_INT | AES_RX_DONE_INT0)
 
-#define AES_DLY_INIT_VALUE	0x00000000
+#define AES_DLY_INIT_VALUE	0x00008101  //8101
 
 /*
  * AES AES_RX Descriptor Format define
@@ -184,12 +184,14 @@ struct mtk_aes_ctx {
 	u8			key[AES_MAX_KEY_SIZE];
 	u32			keylen;
 	dma_addr_t		phy_key;
-	u8			mode;
 	struct crypto_skcipher	*fallback;
 };
 
 struct mtk_aes_reqctx {
-	unsigned long	mode;
+	unsigned long		mode;
+	u8			*iv;
+	unsigned int		count;
+
 };
 
 struct mtk_aes_drv {
