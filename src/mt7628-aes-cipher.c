@@ -1,3 +1,4 @@
+#include <linux/delay.h>
 #include <linux/dma-mapping.h>
 #include <linux/interrupt.h>
 #include <linux/scatterlist.h>
@@ -67,18 +68,25 @@ void mtk_cryp_finish_req(struct mtk_cryp *cryp, int err)
 {
 	struct ablkcipher_request *req = cryp->req;
 
+	dma_sync_sg_for_cpu(cryp->dev, cryp->dst.sg, cryp->dst.nents, DMA_FROM_DEVICE);
+
 	if (cryp->sgs_copied) {
+		dma_unmap_sg(cryp->dev, cryp->orig_out.sg, cryp->orig_out.nents, 				DMA_FROM_DEVICE);
 		sg_copy_from_buffer(cryp->orig_out.sg, cryp->orig_out.nents,
 			cryp->buf_out, cryp->orig_out.len);
-		dma_unmap_sg(cryp->dev, cryp->orig_out.sg, cryp->orig_out.nents, 				DMA_FROM_DEVICE);		
 	} else {
 		dma_unmap_sg(cryp->dev, cryp->dst.sg, cryp->dst.nents, DMA_FROM_DEVICE);
 	}
 
+	dma_unmap_sg(cryp->dev, cryp->src.sg, cryp->src.nents, DMA_TO_DEVICE);
+	req->src = cryp->src.sg;
+	req->dst = cryp->dst.sg;
+	// write all data
+	wmb();
+
 	crypto_finalize_cipher_request(cryp->engine, req, err);
 
 	cryp->req = NULL;
-	memset(cryp->ctx->key, 0, cryp->ctx->keylen);
 }
 
 static int mtk_aes_handle_queue(struct mtk_cryp *cryp,
@@ -136,7 +144,6 @@ static int mtk_cryp_prepare_cipher_req(struct crypto_engine *engine,
 		ret = mtk_cryp_copy_sg_dst(cryp);
 		cryp->sgs_copied = 1;
 	}
-
 out:
 	spin_unlock_irqrestore(&cryp->lock, flags);
 	return ret;
@@ -225,8 +232,6 @@ static int mtk_cryp_cipher_one_req(struct crypto_engine *engine,
 		txdesc->txd_info2 |= TX2_DMA_SDL1_SET(sg_dma_len(next_src));
 		}
 		txdesc->txd_info2 |= TX2_DMA_LS1;
-
-	dma_unmap_sg(cryp->dev, cryp->src.sg, cryp->src.nents, DMA_TO_DEVICE);
 
 	/* Map RX Descriptor */
 	if (cryp->aes_rx_front_idx > cryp->aes_rx_rear_idx)

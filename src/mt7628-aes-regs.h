@@ -7,7 +7,7 @@
 
 #define NUM_AES_RX_DESC		128
 #define NUM_AES_TX_DESC		128
-#define NUM_AES_BYPASS		1
+#define NUM_AES_BYPASS		200
 
 #define RALINK_SYSCTL_BASE	0xB0000000
 #define REG_CLKCTRL		((void *)RALINK_SYSCTL_BASE + 0x30)
@@ -66,7 +66,7 @@
 #define AES_RX_DONE_INT0	(1u<<16)
 #define AES_TX_DONE_INT0	(1u<<0)
 
-#define AES_MASK_INT_ALL	(AES_RX_DLY_INT | AES_RX_DONE_INT0)
+#define AES_MASK_INT_ALL	(AES_RX_DLY_INT)
 
 #define AES_DLY_INIT_VALUE	0x00008101  //8101
 
@@ -91,7 +91,7 @@ struct aes_rxdesc {
 	unsigned int user_data;
 	unsigned int rxd_info4;
 	unsigned int IV[4];
-} __attribute__((aligned(32)));
+} __packed __aligned(4);
 
 /*
  * AES AES_TX Descriptor Format define
@@ -119,7 +119,7 @@ struct aes_txdesc {
 	unsigned int SDP1;
 	unsigned int txd_info4;
 	unsigned int IV[4];
-} __attribute__((aligned(32)));
+} __packed __aligned(4);
 
 
 struct mtk_aes_dma {

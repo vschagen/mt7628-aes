@@ -19,15 +19,14 @@ static void aes_engine_start(struct mtk_cryp *cryp)
 	u32 regVal;
 
 	u32 AES_glo_cfg = AES_TX_DMA_EN | AES_RX_DMA_EN | AES_TX_WB_DDONE
-			| AES_DESC_5DW_INFO_EN | AES_RX_ANYBYTE_ALIGN
-			| AES_32_BYTES | AES_RX_2B_OFFSET;
+			| AES_DESC_5DW_INFO_EN | AES_RX_ANYBYTE_ALIGN;
 
 	writel(AES_DLY_INIT_VALUE, cryp->base + AES_DLY_INT_CFG);
 	writel(AES_MASK_INT_ALL, cryp->base + AES_INT_STATUS);
 	regVal = readl(cryp->base + AES_INT_STATUS);
 	writel(AES_MASK_INT_ALL, cryp->base + AES_INT_MASK);
 
-	AES_glo_cfg |= AES_BT_SIZE_32DWORDS;
+	AES_glo_cfg |= AES_BT_SIZE_16DWORDS;
 	writel(AES_glo_cfg, cryp->base + AES_GLO_CFG);
 }
 
@@ -102,8 +101,10 @@ static irqreturn_t mtk_cryp_irq(int irq, void *arg)
 			break;
 		try_count++;
 		dev_info(cryp->dev, "DMA busy: %d", try_count);
-		cpu_relax();
+		//cpu_relax();
 	} while (1);
+
+	dma_sync_sg_for_cpu(cryp->dev, cryp->dst.sg, cryp->dst.nents, DMA_FROM_DEVICE);
 
 	k = cryp->aes_rx_front_idx;
 	m = cryp->aes_tx_front_idx;
@@ -115,7 +116,7 @@ static irqreturn_t mtk_cryp_irq(int irq, void *arg)
 		if (!(rxdesc->rxd_info2 & RX2_DMA_DONE)) {
 			try_count++;
 			dev_info(cryp->dev, "Try count: %d", try_count);
-			cpu_relax();
+			//cpu_relax();
 			continue;
 		}
 		rxdesc->rxd_info2 &= ~RX2_DMA_DONE;
@@ -159,6 +160,7 @@ static irqreturn_t mtk_cryp_irq(int irq, void *arg)
 	iowrite32(AES_MASK_INT_ALL, cryp->base + AES_INT_MASK);
 	iowrite32(AES_MASK_INT_ALL, cryp->base + AES_INT_STATUS);
 	/* flush write */
+	wmb();
 	regVal=ioread32(cryp->base + AES_INT_STATUS);
 
 	spin_unlock_irqrestore(&cryp->lock, flags);
