@@ -24,7 +24,7 @@ define KernelPackage/crypto-hw-mt7628-aes
   SECTION:=kernel
   KCONFIG:= CONFIG_CRYPTO_HW=y \
             CONFIG_CRYPTO_ENGINE=y
-  DEPENDS:=+kmod-crypto-cbc +kmod-crypto-ecb +@CONFIG_CRYPTO_ENGINE
+  DEPENDS:=@TARGET_ramips_mt76x8 +kmod-crypto-cbc +kmod-crypto-ecb +@CONFIG_CRYPTO_ENGINE
   TITLE:=Kernel driver for HW AES ENGINE MT7628
   FILES:=$(PKG_BUILD_DIR)/crypto-hw-mt7628-aes.ko
   AUTOLOAD:=$(call AutoProbe,crypto-hw-mt7628-aes)
