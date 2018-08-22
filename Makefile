@@ -32,7 +32,7 @@ define KernelPackage/crypto-hw-mt7628-aes
 
 endef
 
-define KernelPacakge/crypto-hw-mt7628-aes/config
+define KernelPackage/crypto-hw-mt7628-aes/config
 	select CRYPTO_HW
 	select CRYPTO_ENGINE
 endef
