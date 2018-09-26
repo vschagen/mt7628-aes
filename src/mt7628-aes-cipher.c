@@ -39,16 +39,14 @@ static int mtk_cryp_copy_sg_dst(struct mtk_cryp *cryp)
 static int mtk_cryp_check_aligned(struct scatterlist *sg, size_t total,
 				    size_t align)
 {
-	int len = 0;
+	int len;
 
-	if (!total)
-		return 0;
 
 	if (!IS_ALIGNED(total, align))
 		return -EINVAL;
 
 	while (sg) {
-		if (!IS_ALIGNED(sg->offset, AES_BLOCK_SIZE))
+		if (!IS_ALIGNED(sg->offset, sizeof(u32)))
 			return -EINVAL;
 
 		if (!IS_ALIGNED(sg->length, align))
@@ -57,9 +55,10 @@ static int mtk_cryp_check_aligned(struct scatterlist *sg, size_t total,
 		len += sg->length;
 		sg = sg_next(sg);
 	}
-
-	if (len != total)
+	if (len != total) {
+		printk("lengt mismath");
 		return -EINVAL;
+	}
 
 	return 0;
 }
@@ -68,19 +67,28 @@ void mtk_cryp_finish_req(struct mtk_cryp *cryp, int err)
 {
 	struct ablkcipher_request *req = cryp->req;
 
-	dma_sync_sg_for_cpu(cryp->dev, cryp->dst.sg, cryp->dst.nents, DMA_FROM_DEVICE);
+	dma_sync_sg_for_cpu(cryp->dev, cryp->dst.sg, cryp->dst.nents,
+		DMA_FROM_DEVICE);
 
-	if (cryp->sgs_copied) {
-		dma_unmap_sg(cryp->dev, cryp->orig_out.sg, cryp->orig_out.nents, 				DMA_FROM_DEVICE);
-		sg_copy_from_buffer(cryp->orig_out.sg, cryp->orig_out.nents,
-			cryp->buf_out, cryp->orig_out.len);
+	if (cryp->src.sg = cryp->dst.sg) {
+		dma_unmap_sg(cryp->dev, cryp->src.sg, cryp->src.nents,
+			DMA_BIDIRECTIONAL);
 	} else {
-		dma_unmap_sg(cryp->dev, cryp->dst.sg, cryp->dst.nents, DMA_FROM_DEVICE);
+		dma_unmap_sg(cryp->dev, cryp->src.sg, cryp->src.nents,
+			DMA_TO_DEVICE);
+		dma_unmap_sg(cryp->dev, cryp->dst.sg, cryp->dst.nents,
+			DMA_FROM_DEVICE);
 	}
 
-	dma_unmap_sg(cryp->dev, cryp->src.sg, cryp->src.nents, DMA_TO_DEVICE);
 	req->src = cryp->src.sg;
-	req->dst = cryp->dst.sg;
+
+	if (cryp->sgs_copied) {
+		sg_copy_from_buffer(cryp->orig_out.sg, cryp->orig_out.nents,
+			cryp->buf_out, cryp->orig_out.len);
+		req->dst = cryp->orig_out.sg;
+	} else {
+		req->dst = cryp->dst.sg;
+	}
 	// write all data
 	wmb();
 
@@ -134,16 +142,13 @@ static int mtk_cryp_prepare_cipher_req(struct crypto_engine *engine,
 	cryp->sgs_copied = 0;
 	ctx->cryp = cryp;
 
-	srca = mtk_cryp_check_aligned(cryp->src.sg, cryp->src.len, AES_BLOCK_SIZE);
 	dsta = mtk_cryp_check_aligned(cryp->dst.sg, cryp->dst.len, AES_BLOCK_SIZE);
 
-	if (srca <0 )
-		ret = mtk_cryp_copy_sg_src(cryp);
-
-	if (dsta < 0) {
+	if (!dsta) {
 		ret = mtk_cryp_copy_sg_dst(cryp);
 		cryp->sgs_copied = 1;
 	}
+
 out:
 	spin_unlock_irqrestore(&cryp->lock, flags);
 	return ret;
