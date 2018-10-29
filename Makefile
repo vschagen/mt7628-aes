@@ -29,7 +29,7 @@ define KernelPackage/crypto-hw-mtk-aes
   $(call AddDepends/crypto)
 endef
 
-define KernelPacakge/crypto-hw-mtk-aes/config
+define KernelPackage/crypto-hw-mtk-aes/config
 	select CRYPTO_HW
 endef
 
