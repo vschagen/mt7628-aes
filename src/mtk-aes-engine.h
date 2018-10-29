@@ -2,12 +2,10 @@
 #define __MTK_AES_ENGINE__
 
 #include <crypto/aes.h>
-#include <crypto/scatterwalk.h>
-#include <crypto/internal/skcipher.h>
 
-#define NUM_AES_RX_DESC		128
-#define NUM_AES_TX_DESC		128
+#define MTK_RING_SIZE		128
 #define NUM_AES_BYPASS		200
+#define MTK_QUEUE_LENGTH	20
 
 #define RALINK_SYSCTL_BASE	0xB0000000
 #define REG_CLKCTRL		((void *)RALINK_SYSCTL_BASE + 0x30)
@@ -66,10 +64,9 @@
 #define AES_RX_DONE_INT0	(1u<<16)
 #define AES_TX_DONE_INT0	(1u<<0)
 
-#define AES_MASK_INT_ALL	(AES_RX_DLY_INT)
+#define AES_MASK_INT_ALL	(AES_RX_DONE_INT0)
 
-#define AES_DLY_INIT_VALUE	0x00008101  //8101
-
+#define AES_DLY_INIT_VALUE	0x00000000
 /*
  * AES AES_RX Descriptor Format define
  */
@@ -86,12 +83,12 @@
 #define RX4_DMA_KIU			BIT(6)
 
 struct aes_rxdesc {
-	unsigned int SDP0;
-	volatile unsigned int rxd_info2;
-	unsigned int user_data;
-	unsigned int rxd_info4;
-	unsigned int IV[4];
-} __packed __aligned(4);
+	unsigned int		SDP0;
+	volatile unsigned int	rxd_info2;
+	unsigned int 		user_data;
+	unsigned int		rxd_info4;
+	unsigned int		IV[4];
+} __attribute__((aligned(32)));
 
 /*
  * AES AES_TX Descriptor Format define
@@ -114,22 +111,15 @@ struct aes_rxdesc {
 #define TX4_DMA_AES_256			2
 
 struct aes_txdesc {
-	unsigned int SDP0;
-	volatile unsigned int txd_info2;
-	unsigned int SDP1;
-	unsigned int txd_info4;
-	unsigned int IV[4];
-} __packed __aligned(4);
-
-
-struct mtk_aes_dma {
-	struct scatterlist	*sg;
-	int			nents;
-	size_t			len;
-};
+	unsigned int			SDP0;
+	volatile unsigned int		txd_info2;
+	unsigned int			SDP1;
+	unsigned int			txd_info4;
+	unsigned int			IV[4];
+} __attribute__((aligned(32)));
 
 /**
- * struct mtk_cryp - Cryptographic device
+ * struct mtk_dev - Cryptographic device
  * @base:	pointer to mapped register I/O base
  * @dev:	pointer to device
  * @clk_cryp:	pointer to crypto clock
@@ -143,7 +133,7 @@ struct mtk_aes_dma {
  *
  * Structure storing cryptographic device information.
  */
-struct mtk_cryp {
+struct mtk_dev {
 	void __iomem			*base;
 	struct device			*dev;
 	struct clk			*clk;
@@ -151,36 +141,40 @@ struct mtk_cryp {
 
 	struct aes_txdesc		*tx;
 	struct aes_rxdesc		*rx;
-
-	unsigned int			aes_tx_front_idx;
-	unsigned int			aes_rx_front_idx;
-	unsigned int			aes_tx_rear_idx;
-	unsigned int			aes_rx_rear_idx;
 	dma_addr_t			phy_tx;
 	dma_addr_t			phy_rx;
+	dma_addr_t			phy_rec;
 
-	struct mtk_aes_dma		src;
-	struct mtk_aes_dma		dst;
-	struct mtk_aes_dma		orig_out;
 	struct list_head		aes_list;
 
-	struct crypto_engine		*engine;
+	struct crypto_queue		queue;
+	struct tasklet_struct		done_tasklet;
+	struct tasklet_struct		queue_tasklet;
+	unsigned int			rec_front_idx;
+	unsigned int			rec_rear_idx;
+	unsigned int			rec_free;
+	struct mtk_dma_rec		*rec;
+	unsigned int			result;
 	spinlock_t			lock;
-	struct ablkcipher_request	*req;
-	struct mtk_aes_ctx		*ctx;
-
-	/* Buffers for copying for unaligned cases */
-	struct scatterlist		in_sgl;
-	struct scatterlist		out_sgl;
-	void				*buf_in;
-	void				*buf_out;
-	bool                    	sgs_copied;
-	struct scatter_walk		in_walk;
-	struct scatter_walk		out_walk;
+};
+/**
+ * struct mtk_dma_rec - holds the records associated with the ringbuffer
+ * @src: Dma address of the source packet
+ * @Dst: Dma address of the destination
+ * @size: Size of the packet
+ * @req: holds the async_request
+ */
+struct mtk_dma_rec {
+	unsigned int			src;
+	unsigned int			dst;
+	unsigned int			len;
+	unsigned int			flags;
+	unsigned int			*req;
+	unsigned int			result;
 };
 
 struct mtk_aes_ctx {
-	struct mtk_cryp *cryp;
+	struct mtk_dev		*mtk;
 	u8			key[AES_MAX_KEY_SIZE];
 	u32			keylen;
 	dma_addr_t		phy_key;
@@ -189,9 +183,6 @@ struct mtk_aes_ctx {
 
 struct mtk_aes_reqctx {
 	unsigned long		mode;
-	u8			*iv;
-	unsigned int		count;
-
 };
 
 struct mtk_aes_drv {

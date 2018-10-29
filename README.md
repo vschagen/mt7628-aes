@@ -1,14 +1,20 @@
 # Mediatek AES Crypto Engine
 
-New and improved AES Crypto Engine. Written from scratch to enable full features and performance
-on Linux Kernel v4.6+. It features full asynchronous support with crypto-engine queue handling.
+This AES Engine is available in the Mediatek MT76x8 SoC.
 
-Added alignment checks and buffer copy in order to work with OpenVPN. This comes with 
-performance penalties. 
+It enables hardware crypto for AES-ECB and AES-CBC with 128/192/256 keysize.
 
-This AES Engine is available in the Mediatek MT7628 and MT7688 SoC
+This should be added to your device DTS or better yet to the mt76x8.dtsi:
 
-Possibly the RT6856 is using the engine. The Datasheet specifies AES Engine like the MT7628.
-Media releases about the Ralink RT6856 state it as IPSec accelerator.
+	crypto: crypto@10004000 {
+		compatible = "mediatek,mtk-aes";
+		reg = <0x10004000 0x1000>;
 
-For now (since its target is MT76x8) only Little Endian supported.
+		interrupt-parent = <&intc>;
+		interrupts = <13>;
+
+		resets = <&rstctrl 29>;
+		reset-names = "cryp";
+		clocks = <&clkctrl 29>;
+		clock-names = "cryp";
+	};
