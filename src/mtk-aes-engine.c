@@ -236,9 +236,8 @@ static int mtk_combine_scatter(struct mtk_dev *mtk, struct scatterlist *sgsrc,
 	return count;
 }
 
-int mtk_aes_xmit(struct crypto_async_request *async_req)
+int mtk_aes_xmit(struct ablkcipher_request *req)
 {
-	struct ablkcipher_request *req = ablkcipher_request_cast(async_req);
 	struct crypto_ablkcipher *tfm = crypto_ablkcipher_reqtfm(req);
 	struct mtk_aes_ctx *ctx = crypto_ablkcipher_ctx(tfm);
 	struct mtk_aes_reqctx *rctx = ablkcipher_request_ctx(req);
@@ -319,9 +318,8 @@ int mtk_aes_xmit(struct crypto_async_request *async_req)
 	return 0;
 }
 
-int mtk_handle_request(struct crypto_async_request *async_req)
+int mtk_handle_request(struct ablkcipher_request *req)
 {
-	struct ablkcipher_request *req = ablkcipher_request_cast(async_req);
 	struct crypto_ablkcipher *tfm = crypto_ablkcipher_reqtfm(req);
 	struct mtk_aes_ctx *ctx = crypto_ablkcipher_ctx(tfm);
 	struct mtk_dev *mtk = ctx->mtk;
@@ -344,13 +342,13 @@ int mtk_handle_request(struct crypto_async_request *async_req)
 		return ret;
 	}
 
-	ret = mtk_aes_xmit(async_req);
+	ret = mtk_aes_xmit(req);
 
 	return ret;
 }
 
 int mtk_handle_queue(struct mtk_dev *mtk,
-			    struct crypto_async_request *req)
+			    struct ablkcipher_request *req)
 {
 	unsigned long flags;
 	int ret = 0, err;
@@ -381,7 +379,7 @@ int mtk_handle_queue(struct mtk_dev *mtk,
 static void mtk_tasklet_req_done(unsigned long data)
 {
 	struct mtk_dev *mtk = (struct mtk_dev *)data;
-	struct crypto_async_request *async_req;
+	struct ablkcipher_request *req;
 	struct aes_txdesc *txdesc;
 	struct aes_rxdesc *rxdesc;
 	struct mtk_dma_rec *rec;
@@ -440,9 +438,9 @@ get_next:
 	} while (1);
 
 	mtk->rec_front_idx = (ctr + 1) % MTK_RING_SIZE;
-	async_req = (struct crypto_async_request *)rec->req;
+	req = (struct ablkcipher_request *)rec->req;
 	writel(ctr, mtk->base + AES_RX_CALC_IDX0);
-	async_req->complete(async_req, 0);
+	req->base.complete(&req->base, 0);
 
 	if (mtk->count > 0) {
 		goto get_next;
@@ -523,7 +521,7 @@ static int mtk_aes_crypt(struct ablkcipher_request *req, unsigned int mode)
 
 	rctx->mode = mode;
 
-	return mtk_handle_queue(mtk, &req->base);
+	return mtk_handle_queue(mtk, req);
 }
 
 /* ********************** ALG API ************************************ */
