@@ -22,10 +22,15 @@ This should be added to your device DTS or better yet to the mt76x8.dtsi:
 Benchmark: By default crypto-blocks <100 bytes are software only
 
 You have chosen to measure elapsed time instead of user CPU time.
+
 Doing aes-256-cbc for 3s on 16 size blocks: 358615 aes-256-cbc's in 3.00s
+
 Doing aes-256-cbc for 3s on 64 size blocks: 184798 aes-256-cbc's in 3.00s
+
 Doing aes-256-cbc for 3s on 256 size blocks: 152296 aes-256-cbc's in 3.00s
+
 Doing aes-256-cbc for 3s on 1024 size blocks: 120724 aes-256-cbc's in 3.00s
+
 Doing aes-256-cbc for 3s on 8192 size blocks: 36151 aes-256-cbc's in 3.00s
 
 The 'numbers' are in 1000s of bytes per second processed.
