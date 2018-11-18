@@ -34,6 +34,8 @@ Doing aes-256-cbc for 3s on 1024 size blocks: 120724 aes-256-cbc's in 3.00s
 Doing aes-256-cbc for 3s on 8192 size blocks: 36151 aes-256-cbc's in 3.00s
 
 The 'numbers' are in 1000s of bytes per second processed.
-type             16 bytes     64 bytes    256 bytes   1024 bytes   8192 bytes
-aes-256-cbc       1912.61k     3942.36k    12995.93k    41207.13k    98716.33k
+
+type		16 bytes     64 bytes    256 bytes   1024 bytes   8192 bytes
+
+aes-256-cbc	1912.61k     3942.36k    12995.93k    41207.13k    98716.33k
 
