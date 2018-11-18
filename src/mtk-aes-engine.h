@@ -4,7 +4,7 @@
 #include <crypto/aes.h>
 
 #define MTK_RING_SIZE		128
-#define NUM_AES_BYPASS		200
+#define NUM_AES_BYPASS		100
 #define MTK_QUEUE_LENGTH	20
 
 #define RALINK_SYSCTL_BASE	0xB0000000
@@ -64,9 +64,9 @@
 #define AES_RX_DONE_INT0	(1u<<16)
 #define AES_TX_DONE_INT0	(1u<<0)
 
-#define AES_MASK_INT_ALL	(AES_RX_DONE_INT0)
+#define AES_MASK_INT_ALL	(AES_RX_DLY_INT)
 
-#define AES_DLY_INIT_VALUE	0x00000000
+#define AES_DLY_INIT_VALUE	0x00008101
 /*
  * AES AES_RX Descriptor Format define
  */
@@ -147,15 +147,12 @@ struct mtk_dev {
 
 	struct list_head		aes_list;
 
-	struct crypto_queue		queue;
 	struct tasklet_struct		done_tasklet;
-	struct tasklet_struct		queue_tasklet;
 	unsigned int			rec_front_idx;
 	unsigned int			rec_rear_idx;
-	unsigned int			rec_free;
 	struct mtk_dma_rec		*rec;
-	unsigned int			result;
 	spinlock_t			lock;
+	unsigned int			count;
 };
 /**
  * struct mtk_dma_rec - holds the records associated with the ringbuffer
@@ -168,9 +165,7 @@ struct mtk_dma_rec {
 	unsigned int			src;
 	unsigned int			dst;
 	unsigned int			len;
-	unsigned int			flags;
 	unsigned int			*req;
-	unsigned int			result;
 };
 
 struct mtk_aes_ctx {

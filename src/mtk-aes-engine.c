@@ -131,8 +131,7 @@ static int aes_engine_desc_init(struct mtk_dev *mtk)
 
 	mtk->rec_rear_idx = MTK_RING_SIZE - 1;
 	mtk->rec_front_idx = 0;
-	mtk->rec_free = MTK_RING_SIZE;
-	mtk->result = 0;
+	mtk->count = 0;
 
 	writel(AES_PST_DRX_IDX0, mtk->base + AES_RST_CFG);
 
@@ -216,8 +215,6 @@ static int mtk_combine_scatter(struct mtk_dev *mtk, struct scatterlist *sgsrc,
 		rec = &mtk->rec[ctr];
 		rec->src = (unsigned int)(sg_virt(sgin) + offsetin);
 		rec->dst = (unsigned int)(sg_virt(sgout) + offsetout);
-
-		rec->flags = 0;
 		if (remainin == remainout) {
 			len = remainin;
 			nextin = true;
@@ -236,7 +233,6 @@ static int mtk_combine_scatter(struct mtk_dev *mtk, struct scatterlist *sgsrc,
 		total -= len;
 		rec->len = len;
 	}
-	rec->flags = 1;
 	return count;
 }
 
@@ -251,13 +247,13 @@ int mtk_aes_xmit(struct crypto_async_request *async_req)
 	struct aes_rxdesc *rxdesc;
 	struct mtk_dma_rec *rec;
 	u32 aes_txd_info4, info;
-	u32 ctr = 0, count, i, regVal;
-	unsigned int mode;
+	u32 ctr = 0, count, i;
+	unsigned long flags;
 
 	if (!mtk)
 		return -ENODEV;
 
-	mode = rctx->mode;
+	spin_lock_irqsave(&mtk->lock, flags);
 
 	if (ctx->keylen == AES_KEYSIZE_256)
 		aes_txd_info4 = TX4_DMA_AES_256;
@@ -311,10 +307,9 @@ int mtk_aes_xmit(struct crypto_async_request *async_req)
 	}
 	txdesc->txd_info2 |= TX2_DMA_LS1;
 	rxdesc->rxd_info2 |= RX2_DMA_LS0;
-
 	mtk->rec_rear_idx = (mtk->rec_rear_idx + count) % MTK_RING_SIZE;
-	mtk->rec_free -= count;
 	ctr = (mtk->rec_rear_idx + 1) % MTK_RING_SIZE;
+	spin_unlock_irqrestore(&mtk->lock, flags);
 	/*
 	 * Make sure all data is updated before starting engine.
 	 */
@@ -357,46 +352,30 @@ int mtk_handle_request(struct crypto_async_request *async_req)
 int mtk_handle_queue(struct mtk_dev *mtk,
 			    struct crypto_async_request *req)
 {
-	struct crypto_async_request *async_req, *backlog;
 	unsigned long flags;
 	int ret = 0, err;
 
 	spin_lock_irqsave(&mtk->lock, flags);
 
-	if (req)
-		ret = crypto_enqueue_request(&mtk->queue, req);
-
-	if (mtk->result != 0) {
+	if (mtk->count > MTK_QUEUE_LENGTH) {
 		spin_unlock_irqrestore(&mtk->lock, flags);
-		return ret;
+		return -EBUSY;
 	}
-
-	backlog = crypto_get_backlog(&mtk->queue);
-	async_req = crypto_dequeue_request(&mtk->queue);
-	if (async_req)
-		mtk->result = 1;
+	ret = -EINPROGRESS;
+	if (req)
+		mtk->count = mtk->count + 1;
 
 	spin_unlock_irqrestore(&mtk->lock, flags);
 
-	if (!async_req)
+	if (!req)
 		return 0;
 
-	if (backlog) {
-		spin_lock_bh(&mtk->lock);
-		backlog->complete(backlog, -EINPROGRESS);
-		spin_unlock_bh(&mtk->lock);
-	}
+	err = mtk_handle_request(req);
 
-	err = mtk_handle_request(async_req);
+	if (err)
+		printk("Error: %d\n", err);
 
 	return ret;
-}
-
-static void mtk_tasklet_handle_queue(unsigned long data)
-{
-	struct mtk_dev *mtk = (struct mtk_dev *)data;
-
-	mtk_handle_queue(mtk, NULL);
 }
 
 static void mtk_tasklet_req_done(unsigned long data)
@@ -407,15 +386,15 @@ static void mtk_tasklet_req_done(unsigned long data)
 	struct aes_rxdesc *rxdesc;
 	struct mtk_dma_rec *rec;
 	int ctr = 0;
-	int count;
 	u32 regVal;
 	int try_count;
-	unsigned long flags = 0;
 
-	if (mtk->rec_free == MTK_RING_SIZE)
+	if (mtk->count == 0)
 		return;
 
+get_next:
 	try_count = 0;
+	mtk->count = mtk->count - 1;
 
 	do {
 		regVal = readl(mtk->base + AES_GLO_CFG);
@@ -425,30 +404,24 @@ static void mtk_tasklet_req_done(unsigned long data)
 		try_count++;
 		if (try_count > 1000000) {
 			dev_info(mtk->dev, "PDMA time-out: %d", try_count);
-			return -ETIMEDOUT;
+			mtk->count = mtk->count + 1;
+			return; // -ETIMEDOUT;
 		}
-		cpu_relax();
 	} while (1);
 
-	try_count = 0;
-	count = 0;
 	ctr = mtk->rec_front_idx;
 
 	do {
-		count++;
 		rxdesc = &mtk->rx[ctr];
 		txdesc = &mtk->tx[ctr];
 		rec = &mtk->rec[ctr];
 
-		if (unlikely(!(rxdesc->rxd_info2 & RX2_DMA_DONE))) {
-			try_count++;
-			if (try_count > 10000) {
-				spin_unlock_irqrestore(&mtk->lock, flags);
-				dev_info(mtk->dev, "Try count: %d", try_count);
-				return -ETIMEDOUT;
-			continue;
-			}
+		if (!(rxdesc->rxd_info2 & RX2_DMA_DONE)) {
+			mtk->count = mtk->count + 1;
+			tasklet_schedule(&mtk->done_tasklet);
+			return;
 		}
+
 		rxdesc->rxd_info2 &= ~RX2_DMA_DONE;
 
 		dma_unmap_single(mtk->dev, (dma_addr_t)txdesc->SDP1, rec->len,
@@ -467,17 +440,13 @@ static void mtk_tasklet_req_done(unsigned long data)
 	} while (1);
 
 	mtk->rec_front_idx = (ctr + 1) % MTK_RING_SIZE;
-	mtk->rec_free += count;
-	rec->result = 0;
-	rec->flags = 0;
-	mtk->result = 0;
-
 	async_req = (struct crypto_async_request *)rec->req;
+	writel(ctr, mtk->base + AES_RX_CALC_IDX0);
 	async_req->complete(async_req, 0);
 
-	writel(ctr, mtk->base + AES_RX_CALC_IDX0);
-
-	tasklet_schedule(&mtk->queue_tasklet);
+	if (mtk->count > 0) {
+		goto get_next;
+	}
 
 	return;
 }
@@ -494,7 +463,6 @@ static irqreturn_t mtk_aes_irq(int irq, void *arg)
 		dev_err(mtk->dev, "No active DMA on interrupt!");
 		return IRQ_NONE;
 	}
-
 	tasklet_schedule(&mtk->done_tasklet);
 
 	writel(AES_MASK_INT_ALL, mtk->base + AES_INT_STATUS);
@@ -775,12 +743,7 @@ static int mtk_aes_probe(struct platform_device *pdev)
 	*/
 	mtk->clk = NULL;
 
-	crypto_init_queue(&mtk->queue, MTK_QUEUE_LENGTH);
-
 	tasklet_init(&mtk->done_tasklet, mtk_tasklet_req_done,
-		     (unsigned long)mtk);
-
-	tasklet_init(&mtk->queue_tasklet, mtk_tasklet_handle_queue,
 		     (unsigned long)mtk);
 
 	/* Allocate descriptor rings */
@@ -808,7 +771,6 @@ static int __exit mtk_aes_remove(struct platform_device *pdev)
 		return -ENODEV;
 
 	tasklet_kill(&mtk->done_tasklet);
-	tasklet_kill(&mtk->queue_tasklet);
 	aes_engine_stop(mtk);
 	mtk_cipher_alg_release(mtk);
 	aes_engine_desc_free(mtk);
