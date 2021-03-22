@@ -173,7 +173,7 @@ struct mtk_aes_ctx {
 	u8			key[AES_MAX_KEY_SIZE];
 	u32			keylen;
 	dma_addr_t		phy_key;
-	struct crypto_skcipher	*fallback;
+	struct crypto_sync_skcipher	*fallback;
 };
 
 struct mtk_aes_reqctx {
