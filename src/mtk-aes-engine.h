@@ -169,15 +169,16 @@ struct mtk_dma_rec {
 };
 
 struct mtk_aes_ctx {
-	struct mtk_dev		*mtk;
-	u8			key[AES_MAX_KEY_SIZE];
-	u32			keylen;
-	dma_addr_t		phy_key;
-	struct crypto_skcipher	*fallback;
+	struct mtk_dev				*mtk;
+	u8							key[AES_MAX_KEY_SIZE];
+	u32							keylen;
+	dma_addr_t					phy_key;
+	struct crypto_skcipher		*fallback;
 };
 
 struct mtk_aes_reqctx {
-	unsigned long		mode;
+	unsigned long				mode;
+	struct skcipher_request		fallback_req;
 };
 
 struct mtk_aes_drv {
